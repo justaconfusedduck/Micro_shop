@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Micro-Shop Frontend</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s ease infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="app" class="container mx-auto p-4 md:p-8 max-w-7xl">
+
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">Micro-Shop</h1>
+            <p class="text-gray-600">A Simple E-Commerce Platform powered by Microservices</p>
+        </header>
+
+        <!-- Notification Area -->
+        <div id="notification" class="hidden p-4 mb-4 rounded-md text-white"></div>
+
+        <!-- Auth Section -->
+        <section id="auth-section" class="bg-white p-8 rounded-lg shadow-md max-w-md mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-center">Get Started</h2>
+            <div class="space-y-4">
+                <input type="text" id="username" placeholder="Username" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="password" id="password" placeholder="Password" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex gap-4 mt-6">
+                <button id="register-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition">Register</button>
+                <button id="login-btn" class="w-full bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-800 transition">Login</button>
+            </div>
+        </section>
+
+        <!-- Main Content Section (Hidden by default) -->
+        <main id="main-content" class="hidden">
+            <div class="flex justify-between items-center mb-6">
+                 <h2 id="welcome-message" class="text-2xl font-semibold"></h2>
+                 <button id="logout-btn" class="bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 transition">Logout</button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                <!-- Products Column -->
+                <div class="lg:col-span-2">
+                    <h3 class="text-xl font-bold mb-4">Products</h3>
+                    <div id="products-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Product cards will be inserted here by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Cart & Orders Column -->
+                <div class="space-y-8">
+                    <!-- Shopping Cart -->
+                    <div>
+                        <h3 class="text-xl font-bold mb-4">Shopping Cart</h3>
+                        <div id="cart-section" class="bg-white p-6 rounded-lg shadow-md min-h-[150px]">
+                             <!-- Cart items will be inserted here -->
+                        </div>
+                    </div>
+
+                     <!-- Order History -->
+                    <div>
+                        <h3 class="text-xl font-bold mb-4">Order History</h3>
+                        <div id="orders-section" class="bg-white p-6 rounded-lg shadow-md min-h-[150px]">
+                            <!-- Order history will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const USER_SERVICE_URL = "http://127.0.0.1:5001";
+        const PRODUCT_SERVICE_URL = "http://127.0.0.1:5002";
+        const INVENTORY_SERVICE_URL = "http://127.0.0.1:5003"; // Not used directly from frontend, but good to have
+        const CART_SERVICE_URL = "http://127.0.0.1:5004";
+        const ORDER_SERVICE_URL = "http://127.0.0.1:5005";
+        
+        // --- STATE ---
+        let loggedInUser = null;
+
+        // --- DOM ELEMENTS ---
+        const authSection = document.getElementById('auth-section');
+        const mainContent = document.getElementById('main-content');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const registerBtn = document.getElementById('register-btn');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const productsList = document.getElementById('products-list');
+        const cartSection = document.getElementById('cart-section');
+        const ordersSection = document.getElementById('orders-section');
+        const notification = document.getElementById('notification');
+
+        // --- UTILITY FUNCTIONS ---
+        function showNotification(message, isError = false) {
+            notification.textContent = message;
+            notification.className = `p-4 mb-4 rounded-md text-white ${isError ? 'bg-red-500' : 'bg-green-500'}`;
+            notification.classList.remove('hidden');
+            setTimeout(() => {
+                notification.classList.add('hidden');
+            }, 3000);
+        }
+        
+        function showSpinner(element) {
+            element.innerHTML = '<div class="flex justify-center items-center h-full"><div class="spinner"></div></div>';
+        }
+
+        // --- API CALLS & RENDERING ---
+        
+        // Products
+        async function fetchAndRenderProducts() {
+            showSpinner(productsList);
+            try {
+                const response = await fetch(`${PRODUCT_SERVICE_URL}/products`);
+                if (!response.ok) throw new Error('Failed to fetch products');
+                const products = await response.json();
+                
+                productsList.innerHTML = ''; // Clear spinner
+                if (products.length === 0) {
+                    productsList.innerHTML = '<p class="text-gray-500">No products available at the moment.</p>';
+                    return;
+                }
+
+                products.forEach(product => {
+                    const productCard = document.createElement('div');
+                    productCard.className = 'bg-white p-6 rounded-lg shadow-md flex flex-col';
+                    productCard.innerHTML = `
+                        <h4 class="text-lg font-bold mb-2">${product.name}</h4>
+                        <p class="text-gray-600 mb-4 flex-grow">${product.description}</p>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xl font-semibold text-blue-600">$${product.price.toFixed(2)}</span>
+                            <button class="add-to-cart-btn bg-blue-500 text-white py-1 px-3 rounded-md hover:bg-blue-600 transition" data-product-id="${product.id}">Add to Cart</button>
+                        </div>
+                    `;
+                    productsList.appendChild(productCard);
+                });
+
+            } catch (error) {
+                productsList.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+            }
+        }
+
+        // Cart
+        async function fetchAndRenderCart() {
+            if (!loggedInUser) return;
+            showSpinner(cartSection);
+            try {
+                const response = await fetch(`${CART_SERVICE_URL}/cart/${loggedInUser}`);
+                if (!response.ok) throw new Error('Failed to fetch cart');
+                const cartItems = await response.json();
+                
+                cartSection.innerHTML = ''; // Clear spinner
+                if (cartItems.length === 0) {
+                    cartSection.innerHTML = '<p class="text-gray-500">Your cart is empty.</p>';
+                    return;
+                }
+
+                const ul = document.createElement('ul');
+                ul.className = 'space-y-2 mb-4';
+                cartItems.forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = 'flex justify-between items-center';
+                    li.innerHTML = `<span>Product ${item.product_id}</span> <span>Qty: ${item.quantity}</span>`;
+                    ul.appendChild(li);
+                });
+                cartSection.appendChild(ul);
+                
+                const checkoutBtn = document.createElement('button');
+                checkoutBtn.id = 'checkout-btn';
+                checkoutBtn.textContent = 'Checkout';
+                checkoutBtn.className = 'w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition';
+                cartSection.appendChild(checkoutBtn);
+
+            } catch (error) {
+                 cartSection.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+            }
+        }
+
+        // Orders
+        async function fetchAndRenderOrders() {
+            if (!loggedInUser) return;
+            showSpinner(ordersSection);
+            try {
+                const response = await fetch(`${ORDER_SERVICE_URL}/orders/${loggedInUser}`);
+                if (!response.ok) throw new Error('Failed to fetch orders');
+                const orders = await response.json();
+
+                ordersSection.innerHTML = ''; // Clear spinner
+                if (orders.length === 0) {
+                    ordersSection.innerHTML = '<p class="text-gray-500">You have no past orders.</p>';
+                    return;
+                }
+                
+                const ul = document.createElement('ul');
+                ul.className = 'space-y-4';
+                orders.forEach(order => {
+                    const li = document.createElement('li');
+                    li.className = 'border-b pb-2';
+                    li.innerHTML = `
+                        <p class="font-semibold">Order ID: <span class="font-normal text-sm">${order.order_id}</span></p>
+                        <p class="font-semibold">Total: <span class="font-normal">$${order.total_price.toFixed(2)}</span></p>
+                        <p class="font-semibold">Status: <span class="font-normal">${order.status}</span></p>
+                    `;
+                    ul.appendChild(li);
+                });
+                ordersSection.appendChild(ul);
+
+            } catch (error) {
+                ordersSection.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+            }
+        }
+        
+        // --- EVENT HANDLERS ---
+        
+        // Register
+        registerBtn.addEventListener('click', async () => {
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+            if (!username || !password) {
+                showNotification('Username and password are required', true);
+                return;
+            }
+            try {
+                const response = await fetch(`${USER_SERVICE_URL}/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message);
+                showNotification(data.message);
+                usernameInput.value = '';
+                passwordInput.value = '';
+            } catch (error) {
+                showNotification(error.message, true);
+            }
+        });
+
+        // Login
+        loginBtn.addEventListener('click', async () => {
+             const username = usernameInput.value.trim();
+             const password = passwordInput.value.trim();
+             if (!username || !password) {
+                showNotification('Username and password are required', true);
+                return;
+             }
+             try {
+                const response = await fetch(`${USER_SERVICE_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message);
+                
+                loggedInUser = username;
+                showNotification('Login successful!');
+                
+                // Update UI
+                authSection.classList.add('hidden');
+                mainContent.classList.remove('hidden');
+                welcomeMessage.textContent = `Welcome, ${loggedInUser}!`;
+                
+                // Fetch initial data
+                await Promise.all([
+                    fetchAndRenderProducts(),
+                    fetchAndRenderCart(),
+                    fetchAndRenderOrders()
+                ]);
+
+             } catch (error) {
+                 showNotification(error.message, true);
+             }
+        });
+        
+        // Logout
+        logoutBtn.addEventListener('click', () => {
+            loggedInUser = null;
+            authSection.classList.remove('hidden');
+            mainContent.classList.add('hidden');
+            usernameInput.value = '';
+            passwordInput.value = '';
+            showNotification('You have been logged out.');
+        });
+
+        // Add to Cart (using event delegation)
+        productsList.addEventListener('click', async (e) => {
+            if (e.target && e.target.classList.contains('add-to-cart-btn')) {
+                const productId = e.target.dataset.productId;
+                try {
+                    const response = await fetch(`${CART_SERVICE_URL}/cart/${loggedInUser}/add`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ product_id: productId, quantity: 1 })
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message);
+                    
+                    showNotification(`Item ${productId} added to cart.`);
+                    await fetchAndRenderCart(); // Refresh cart view
+                } catch (error) {
+                    showNotification(error.message, true);
+                }
+            }
+        });
+
+        // Checkout (using event delegation)
+        cartSection.addEventListener('click', async (e) => {
+            if (e.target && e.target.id === 'checkout-btn') {
+                e.target.disabled = true;
+                e.target.textContent = 'Processing...';
+                try {
+                    const response = await fetch(`${ORDER_SERVICE_URL}/orders/create/${loggedInUser}`, {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message);
+
+                    showNotification('Order placed successfully!');
+                    await Promise.all([
+                        fetchAndRenderCart(), // Refresh cart (will be empty)
+                        fetchAndRenderOrders() // Refresh orders
+                    ]);
+                } catch(error) {
+                    showNotification(error.message, true);
+                    await fetchAndRenderCart(); // Re-enable button
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>

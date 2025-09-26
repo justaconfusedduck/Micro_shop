@@ -90,7 +90,7 @@ const AuthPage = () => {
     
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [email, setEmail] = useState('');
+    const [email, setEmail] = useState(''); 
     const [role, setRole] = useState('buyer'); 
 
     const [error, setError] = useState(null);

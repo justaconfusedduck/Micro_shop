@@ -118,6 +118,7 @@ export const SellerDashboard = () => {
             });
             setMyProducts(prev => [...prev, newProduct]);
             showToast("Product created successfully!");
+            // Reset form
             setNewProductName('');
             setNewProductDesc('');
             setNewProductPrice('');

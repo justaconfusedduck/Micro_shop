@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useContext } from 'react';
 import { AuthProvider, useAuth } from './Auth';
 import { BuyerDashboard } from './views/BuyerDashboard';
 import { SellerDashboard } from './views/SellerDashboard';
@@ -8,6 +8,36 @@ import AuthPage from './Auth';
 const MainController = () => {
     const { user, logout } = useAuth();
     
+    useEffect(() => {
+        if (!user) return;
+
+        let inactivityTimer;
+
+        const resetTimer = () => {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+                console.log("User has been inactive for 1 minute. Logging out.");
+                logout();
+            }, 1 * 60 * 1000); 
+        };
+
+        const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+
+        events.forEach(event => {
+            window.addEventListener(event, resetTimer);
+        });
+
+        resetTimer();
+
+        return () => {
+            clearTimeout(inactivityTimer);
+            events.forEach(event => {
+                window.removeEventListener(event, resetTimer);
+            });
+        };
+    }, [user, logout]);
+
+
     useEffect(() => {
         const handleForceLogout = () => logout();
         window.addEventListener('force-logout', handleForceLogout);

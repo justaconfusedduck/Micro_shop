@@ -25,67 +25,70 @@ def seller_required(f):
 
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split(" ")[1]
+        token = request.headers['Authorization'].split(
+            " ")[1] if 'Authorization' in request.headers else None
         if not token:
             return jsonify({'message':
                             'Authentication Token is missing!'}), 401
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            current_user_role = data.get('role')
-            current_user_name = data.get('sub')
-            if current_user_role != 'seller':
+            if data.get('role') != 'seller':
                 return jsonify(
                     {'message': 'This action requires a seller account!'}), 403
-        except jwt.ExpiredSignatureError:
-            return jsonify({'message': 'Token has expired!'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'message': 'Token is invalid!'}), 401
-        return f(current_user_name, *args, **kwargs)
+            return f(data.get('sub'), *args, **kwargs)
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            return jsonify({'message': 'Token is invalid or expired!'}), 401
+
+    return decorated
+
+
+def admin_required(f):
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers['Authorization'].split(
+            " ")[1] if 'Authorization' in request.headers else None
+        if not token:
+            return jsonify({'message':
+                            'Authentication Token is missing!'}), 401
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            if data.get('role') != 'admin':
+                return jsonify(
+                    {'message': 'This action requires an admin account!'}), 403
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            return jsonify({'message': 'Token is invalid or expired!'}), 401
+        return f(*args, **kwargs)
 
     return decorated
 
 
 @app.route("/products", methods=['GET'])
 def get_products():
-    try:
-        products = list(products_collection.find({}, {'_id': 0}))
-        return jsonify(products)
-    except Exception as e:
-        return jsonify({"message": "Error fetching products"}), 500
+    return jsonify(list(products_collection.find({}, {'_id': 0})))
 
 
 @app.route("/products/<string:product_id>", methods=['GET'])
 def get_product(product_id):
-    try:
-        product = products_collection.find_one({'id': product_id}, {'_id': 0})
-        if product is None:
-            return jsonify({"message": "Product not found"}), 404
-        return jsonify(product)
-    except Exception as e:
-        return jsonify({"message": "Error fetching product details"}), 500
+    product = products_collection.find_one({'id': product_id}, {'_id': 0})
+    return jsonify(product) if product else (jsonify(
+        {"message": "Product not found"}), 404)
 
 
 @app.route("/products/search", methods=['GET'])
 def search_products():
     query = request.args.get('q', '')
-    try:
-        results = list(
+    return jsonify(
+        list(
             products_collection.find({'$text': {
                 '$search': query
-            }}, {'_id': 0}))
-        return jsonify(results)
-    except Exception as e:
-        return jsonify({"message": "Error during search"}), 500
+            }}, {'_id': 0})))
 
 
 @app.route("/products", methods=['POST'])
 @seller_required
 def create_product(current_seller):
     data = request.get_json()
-    if not data or not data.get('name') or not data.get('price'):
-        return jsonify({'message': 'Name and price are required!'}), 400
     new_product = {
         'id': f"P{uuid.uuid4().hex[:4]}",
         'name': data['name'],
@@ -93,54 +96,51 @@ def create_product(current_seller):
         'price': float(data['price']),
         'owner_id': current_seller
     }
-    try:
-        products_collection.insert_one(new_product)
-        new_product.pop('_id', None)
-        return jsonify(new_product), 201
-    except Exception as e:
-        return jsonify({'message': f'Could not create product: {e}'}), 500
+    products_collection.insert_one(new_product)
+    new_product.pop('_id', None)
+    return jsonify(new_product), 201
 
 
 @app.route("/products/<string:product_id>", methods=['PUT'])
 @seller_required
 def update_product(current_seller, product_id):
     data = request.get_json()
-    if not data:
-        return jsonify({'message': 'No update data provided!'}), 400
-    try:
-        product = products_collection.find_one({'id': product_id})
-        if not product:
-            return jsonify({'message': 'Product not found!'}), 404
-        if product.get('owner_id') != current_seller:
-            return jsonify(
-                {'message':
-                 'You are not authorized to edit this product!'}), 403
-        update_data = {
-            k: v
-            for k, v in data.items() if k not in ['id', 'owner_id', '_id']
-        }
-        if 'price' in update_data:
-            update_data['price'] = float(update_data['price'])
-        products_collection.update_one({'id': product_id},
-                                       {'$set': update_data})
-        return jsonify({'message': 'Product updated successfully'}), 200
-    except Exception as e:
-        return jsonify({'message': f'Could not update product: {e}'}), 500
+    product = products_collection.find_one({'id': product_id})
+    if not product: return jsonify({'message': 'Product not found!'}), 404
+    if product.get('owner_id') != current_seller:
+        return jsonify(
+            {'message': 'You are not authorized to edit this product!'}), 403
+    update_data = {
+        k: v
+        for k, v in data.items() if k not in ['id', 'owner_id', '_id']
+    }
+    if 'price' in update_data:
+        update_data['price'] = float(update_data['price'])
+    products_collection.update_one({'id': product_id}, {'$set': update_data})
+    return jsonify({'message': 'Product updated successfully'}), 200
 
 
 @app.route("/products/<string:product_id>", methods=['DELETE'])
 @seller_required
 def delete_product(current_seller, product_id):
+    product = products_collection.find_one({'id': product_id})
+    if not product: return jsonify({'message': 'Product not found!'}), 404
+    if product.get('owner_id') != current_seller:
+        return jsonify(
+            {'message': 'You are not authorized to delete this product!'}), 403
+    products_collection.delete_one({'id': product_id})
+    return jsonify({'message': 'Product deleted successfully'}), 200
+
+
+@app.route("/admin/products/<string:product_id>", methods=['DELETE'])
+@admin_required
+def admin_delete_product(product_id):
     try:
-        product = products_collection.find_one({'id': product_id})
-        if not product:
+        result = products_collection.delete_one({'id': product_id})
+        if result.deleted_count == 0:
             return jsonify({'message': 'Product not found!'}), 404
-        if product.get('owner_id') != current_seller:
-            return jsonify(
-                {'message':
-                 'You are not authorized to delete this product!'}), 403
-        products_collection.delete_one({'id': product_id})
-        return jsonify({'message': 'Product deleted successfully'}), 200
+        return jsonify({'message':
+                        'Product deleted by admin successfully'}), 200
     except Exception as e:
         return jsonify({'message': f'Could not delete product: {e}'}), 500
 

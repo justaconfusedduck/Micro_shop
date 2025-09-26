@@ -6,14 +6,21 @@ from flask_cors import CORS
 import jwt
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+from functools import wraps
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 load_dotenv()
 app = Flask(__name__)
 CORS(app,
      supports_credentials=True,
      origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
+limiter = Limiter(get_remote_address,
+                  app=app,
+                  default_limits=["200 per day", "50 per hour"],
+                  storage_uri="memory://")
 SECRET_KEY = os.environ.get('SECRET_KEY')
-ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
+ACCESS_TOKEN_EXPIRES = timedelta(minutes=10)
 REFRESH_TOKEN_EXPIRES = timedelta(days=7)
 MONGO_URI = os.environ.get('USER_DB_URI')
 if not MONGO_URI or not SECRET_KEY:
@@ -24,7 +31,29 @@ users_collection = db.users
 refresh_tokens_collection = db.refresh_tokens
 
 
+def admin_required(f):
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers['Authorization'].split(
+            " ")[1] if 'Authorization' in request.headers else None
+        if not token:
+            return jsonify({'message':
+                            'Authentication Token is missing!'}), 401
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            if data.get('role') != 'admin':
+                return jsonify(
+                    {'message': 'This action requires an admin account!'}), 403
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            return jsonify({'message': 'Token is invalid or expired!'}), 401
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 @app.route("/register", methods=['POST'])
+@limiter.limit("10 per hour")
 def register():
     data = request.get_json()
     username = data.get('username')
@@ -48,6 +77,7 @@ def register():
 
 
 @app.route("/login", methods=['POST'])
+@limiter.limit("5 per minute")
 def login():
     data = request.get_json()
     username = data.get('username')
@@ -56,16 +86,17 @@ def login():
         return jsonify({"message": "Invalid username or password"}), 401
     user = users_collection.find_one({"username": username})
     if user and check_password_hash(user['password'], password):
+        refresh_tokens_collection.delete_many({'username': username})
         user_role = user.get("role", "buyer")
-        access_token_payload = {
-            'sub': username,
-            'role': user_role,
-            'type': 'access',
-            'exp': datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRES
-        }
-        access_token = jwt.encode(access_token_payload,
-                                  SECRET_KEY,
-                                  algorithm="HS256")
+        access_token = jwt.encode(
+            {
+                'sub': username,
+                'role': user_role,
+                'type': 'access',
+                'exp': datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRES
+            },
+            SECRET_KEY,
+            algorithm="HS256")
         refresh_token = jwt.encode(
             {
                 'sub': username,
@@ -87,8 +118,7 @@ def login():
         response.set_cookie('refresh_token',
                             refresh_token,
                             httponly=True,
-                            secure=True,
-                            samesite='Lax',
+                            samesite='None',
                             expires=datetime.now(timezone.utc) +
                             REFRESH_TOKEN_EXPIRES)
         return response
@@ -104,8 +134,6 @@ def refresh():
                         'Refresh token is invalid or revoked!'}), 401
     try:
         data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        if data.get('type') != 'refresh':
-            return jsonify({'message': 'Invalid token type!'}), 401
         user = users_collection.find_one({"username": data['sub']})
         if not user: return jsonify({'message': 'User not found!'}), 401
         user_role = user.get("role", "buyer")
@@ -135,6 +163,29 @@ def logout():
     response = make_response(jsonify({'message': 'Successfully logged out.'}))
     response.set_cookie('refresh_token', '', expires=0)
     return response
+
+
+@app.route("/admin/users", methods=['GET'])
+@admin_required
+def get_all_users():
+    return jsonify(list(users_collection.find({}, {'_id': 0, 'password': 0})))
+
+
+@app.route("/admin/users/<string:username>/role", methods=['PUT'])
+@admin_required
+def update_user_role(username):
+    data = request.get_json()
+    new_role = data.get('role')
+    if not new_role or new_role not in ['buyer', 'seller', 'admin']:
+        return jsonify({"message": "Valid new role is required"}), 400
+    result = users_collection.update_one({'username': username},
+                                         {'$set': {
+                                             'role': new_role
+                                         }})
+    if result.matched_count == 0:
+        return jsonify({"message": "User not found"}), 404
+    return jsonify(
+        {"message": f"User {username}'s role updated to {new_role}"}), 200
 
 
 if __name__ == '__main__':

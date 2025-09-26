@@ -5,18 +5,17 @@ from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import jwt
 from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
 
+load_dotenv()
 app = Flask(__name__)
 CORS(app,
      supports_credentials=True,
      origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
-app.config['SECRET_KEY'] = os.urandom(24).hex()
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
 REFRESH_TOKEN_EXPIRES = timedelta(days=7)
-MONGO_URI = os.environ.get(
-    'USER_DB_URI',
-    'mongodb+srv://Not_GB:4Fuoje4xVWMt7yRb@zero.uvzi6xo.mongodb.net/?retryWrites=true&w=majority&appName=Zero'
-)
+MONGO_URI = os.environ.get('USER_DB_URI')
 client = MongoClient(MONGO_URI)
 db = client.user_db
 users_collection = db.users
@@ -135,4 +134,4 @@ if __name__ == '__main__':
     users_collection.create_index('username', unique=True)
     refresh_tokens_collection.create_index('token', unique=True)
     print("MongoDB indexes checked/created.")
-    app.run(port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)

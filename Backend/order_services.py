@@ -6,7 +6,9 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import requests
 from datetime import datetime, timezone
+from dotenv import load_dotenv
 
+load_dotenv()
 app = Flask(__name__)
 CORS(app,
      supports_credentials=True,
@@ -14,10 +16,7 @@ CORS(app,
 PRODUCT_SERVICE_URL = "http://127.0.0.1:5002"
 INVENTORY_SERVICE_URL = "http://127.0.0.1:5003"
 CART_SERVICE_URL = "http://127.0.0.1:5004"
-MONGO_URI = os.environ.get(
-    'ORDER_DB_URI',
-    'mongodb+srv://Not_GB:4Fuoje4xVWMt7yRb@zero.uvzi6xo.mongodb.net/?retryWrites=true&w=majority&appName=Zero'
-)
+MONGO_URI = os.environ.get('ORDER_DB_URI')
 client = MongoClient(MONGO_URI)
 db = client.order_db
 orders_collection = db.orders

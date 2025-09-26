@@ -12,10 +12,12 @@ app = Flask(__name__)
 CORS(app,
      supports_credentials=True,
      origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
 REFRESH_TOKEN_EXPIRES = timedelta(days=7)
 MONGO_URI = os.environ.get('USER_DB_URI')
+if not MONGO_URI or not SECRET_KEY:
+    raise RuntimeError("Database URI or SECRET_KEY not found in .env file")
 client = MongoClient(MONGO_URI)
 db = client.user_db
 users_collection = db.users
@@ -34,9 +36,9 @@ def register():
     hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
     users_collection.insert_one({
         "username": username,
-        "password": hashed_password
+        "password": hashed_password,
+        "role": "buyer"
     })
-    print(f"User '{username}' registered.")
     return jsonify({"message":
                     f"User {username} registered successfully"}), 201
 
@@ -50,21 +52,23 @@ def login():
         return jsonify({"message": "Invalid username or password"}), 401
     user = users_collection.find_one({"username": username})
     if user and check_password_hash(user['password'], password):
-        access_token = jwt.encode(
-            {
-                'sub': username,
-                'type': 'access',
-                'exp': datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRES
-            },
-            app.config['SECRET_KEY'],
-            algorithm="HS256")
+        user_role = user.get("role", "buyer")
+        access_token_payload = {
+            'sub': username,
+            'role': user_role,
+            'type': 'access',
+            'exp': datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRES
+        }
+        access_token = jwt.encode(access_token_payload,
+                                  SECRET_KEY,
+                                  algorithm="HS256")
         refresh_token = jwt.encode(
             {
                 'sub': username,
                 'type': 'refresh',
                 'exp': datetime.now(timezone.utc) + REFRESH_TOKEN_EXPIRES
             },
-            app.config['SECRET_KEY'],
+            SECRET_KEY,
             algorithm="HS256")
         refresh_tokens_collection.insert_one({
             'token': refresh_token,
@@ -90,25 +94,25 @@ def login():
 @app.route("/refresh", methods=['POST'])
 def refresh():
     token = request.cookies.get('refresh_token')
-    if not token:
-        return jsonify({'message': 'Refresh token is missing!'}), 401
+    if not token: return jsonify({'message': 'Refresh token is missing!'}), 401
     if not refresh_tokens_collection.find_one({'token': token}):
         return jsonify({'message':
                         'Refresh token is invalid or revoked!'}), 401
     try:
-        data = jwt.decode(token,
-                          app.config['SECRET_KEY'],
-                          algorithms=["HS256"])
+        data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         if data.get('type') != 'refresh':
             return jsonify({'message': 'Invalid token type!'}), 401
-        current_user = data['sub']
+        user = users_collection.find_one({"username": data['sub']})
+        if not user: return jsonify({'message': 'User not found!'}), 401
+        user_role = user.get("role", "buyer")
         new_access_token = jwt.encode(
             {
-                'sub': current_user,
+                'sub': data['sub'],
+                'role': user_role,
                 'type': 'access',
                 'exp': datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRES
             },
-            app.config['SECRET_KEY'],
+            SECRET_KEY,
             algorithm="HS256")
         return jsonify({'access_token': new_access_token})
     except jwt.ExpiredSignatureError:
@@ -123,8 +127,7 @@ def refresh():
 @app.route("/logout", methods=['POST'])
 def logout():
     token = request.cookies.get('refresh_token')
-    if token:
-        refresh_tokens_collection.delete_one({'token': token})
+    if token: refresh_tokens_collection.delete_one({'token': token})
     response = make_response(jsonify({'message': 'Successfully logged out.'}))
     response.set_cookie('refresh_token', '', expires=0)
     return response

@@ -44,6 +44,7 @@ const useAuth = () => useContext(AuthContext);
 
 const apiCall = async (url, options = {}) => {
     options.credentials = 'include';
+
     const token = localStorage.getItem('accessToken');
     if (token) {
         options.headers = {
@@ -75,6 +76,7 @@ const apiCall = async (url, options = {}) => {
             const { access_token } = await refreshResponse.json();
             localStorage.setItem('accessToken', access_token);
 
+            // Retry the original request with the new token
             options.headers['Authorization'] = `Bearer ${access_token}`;
             response = await fetch(url, options);
         }
@@ -95,6 +97,7 @@ const apiCall = async (url, options = {}) => {
         throw error;
     }
 };
+
 
 
 const Toast = ({ message, type, onDismiss }) => {
@@ -196,15 +199,32 @@ const ProductCard = ({ product, isWishlisted, onAddToCart, onToggleWishlist }) =
     );
 };
 
+const useDebounce = (value, delay) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+    return debouncedValue;
+};
+
+
 const MainShop = () => {
     const { user } = useAuth();
     const [products, setProducts] = useState([]);
     const [wishlist, setWishlist] = useState([]);
     const [cart, setCart] = useState([]);
     const [orders, setOrders] = useState([]);
-    const [currentView, setCurrentView] = useState('shop');
+    const [currentView, setCurrentView] = useState('shop'); 
     const [toast, setToast] = useState(null);
     const [productDetails, setProductDetails] = useState({});
+    const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearchQuery = useDebounce(searchQuery, 500); 
+
 
      const showToast = (message, type = 'success') => {
         setToast({ message, type });
@@ -244,29 +264,55 @@ const MainShop = () => {
     }, [user]);
 
     useEffect(() => {
+        const searchProducts = async () => {
+            if (debouncedSearchQuery) {
+                try {
+                    const searchResults = await apiCall(`${API_URLS.PRODUCT}/products/search?q=${debouncedSearchQuery}`);
+                    setProducts(searchResults);
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+            } else {
+                apiCall(`${API_URLS.PRODUCT}/products`).then(setProducts).catch(err => showToast(err.message, 'error'));
+            }
+        };
+        searchProducts();
+    }, [debouncedSearchQuery]);
+
+
+    useEffect(() => {
         if (user) {
             fetchAllData();
         }
     }, [user, fetchAllData]);
 
-    const handleAddToCart = async (productId) => {
+    const handleUpdateCart = async (productId, quantity) => {
+        const endpoint = quantity > 0 ? 'add' : 'remove';
+        
         try {
-            await apiCall(`${API_URLS.CART}/cart/${user}/add`, {
+            await apiCall(`${API_URLS.CART}/cart/${user}/${endpoint}`, {
                 method: 'POST',
                 body: JSON.stringify({ product_id: productId, quantity: 1 })
             });
+
             setCart(prevCart => {
                 const existingItem = prevCart.find(item => item.product_id === productId);
-                if (existingItem) {
-                    return prevCart.map(item => item.product_id === productId ? { ...item, quantity: item.quantity + 1 } : item);
+                if (!existingItem) return prevCart;
+
+                const newQuantity = existingItem.quantity + quantity;
+                if (newQuantity <= 0) {
+                    return prevCart.filter(item => item.product_id !== productId);
                 }
-                return [...prevCart, { product_id: productId, quantity: 1 }];
+                return prevCart.map(item =>
+                    item.product_id === productId ? { ...item, quantity: newQuantity } : item
+                );
             });
-            showToast("Item added to cart!");
+            showToast("Cart updated!");
         } catch (error) {
             showToast(error.message, 'error');
         }
     };
+
 
     const handleToggleWishlist = async (productId, isWishlisted) => {
         const endpoint = isWishlisted ? 'remove' : 'add';
@@ -319,8 +365,16 @@ const MainShop = () => {
                                      const product = productDetails[item.product_id];
                                      return product ? (
                                         <div key={item.product_id} className="flex justify-between items-center py-4 border-b">
-                                            <span>{product.name} (x{item.quantity})</span>
-                                            <span>${(product.price * item.quantity).toFixed(2)}</span>
+                                            <div>
+                                                <p className="font-semibold">{product.name}</p>
+                                                <p className="text-gray-600">${product.price.toFixed(2)} each</p>
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                                <button onClick={() => handleUpdateCart(item.product_id, -1)} className="px-2 py-1 border rounded">-</button>
+                                                <span>{item.quantity}</span>
+                                                <button onClick={() => handleUpdateCart(item.product_id, 1)} className="px-2 py-1 border rounded">+</button>
+                                            </div>
+                                            <span className="font-semibold">${(product.price * item.quantity).toFixed(2)}</span>
                                         </div>
                                      ) : null;
                                 })}
@@ -356,7 +410,7 @@ const MainShop = () => {
                          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                             {wishlist.length === 0 ? <p className="col-span-full">Your wishlist is empty.</p> : wishlist.map(productId => {
                                 const product = productDetails[productId];
-                                return product ? <ProductCard key={productId} product={product} isWishlisted={true} onAddToCart={handleAddToCart} onToggleWishlist={handleToggleWishlist} /> : null;
+                                return product ? <ProductCard key={productId} product={product} isWishlisted={true} onAddToCart={() => handleUpdateCart(productId, 1)} onToggleWishlist={handleToggleWishlist} /> : null;
                             })}
                          </div>
                          <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">← Back to Shop</button>
@@ -364,10 +418,21 @@ const MainShop = () => {
                  );
             default: // shop
                 return (
-                     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                        {products.map(p => (
-                            <ProductCard key={p.id} product={p} isWishlisted={wishlist.includes(p.id)} onAddToCart={handleAddToCart} onToggleWishlist={handleToggleWishlist} />
-                        ))}
+                    <div>
+                        <div className="mb-6">
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search for products..."
+                                className="w-full p-3 border rounded-lg shadow-sm"
+                            />
+                        </div>
+                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                            {products.map(p => (
+                                <ProductCard key={p.id} product={p} isWishlisted={wishlist.includes(p.id)} onAddToCart={() => handleUpdateCart(p.id, 1)} onToggleWishlist={handleToggleWishlist} />
+                            ))}
+                        </div>
                     </div>
                 );
         }

@@ -1,8 +1,9 @@
 import os
 from pymongo import MongoClient
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+import re
 
 load_dotenv()
 app = Flask(__name__)
@@ -10,6 +11,8 @@ CORS(app,
      supports_credentials=True,
      origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
 MONGO_URI = os.environ.get('PRODUCT_DB_URI')
+if not MONGO_URI:
+    raise RuntimeError("PRODUCT_DB_URI not found in .env file")
 client = MongoClient(MONGO_URI)
 db = client.product_db
 products_collection = db.products
@@ -55,6 +58,31 @@ def get_products():
         return jsonify({"message": "Error fetching products"}), 500
 
 
+@app.route("/products/search", methods=['GET'])
+def search_products():
+    query = request.args.get('q', '')
+    if not query:
+        return get_products()
+    try:
+        regex = re.compile(query, re.IGNORECASE)
+        search_filter = {
+            '$or': [{
+                'name': {
+                    '$regex': regex
+                }
+            }, {
+                'description': {
+                    '$regex': regex
+                }
+            }]
+        }
+        products = list(products_collection.find(search_filter, {'_id': 0}))
+        return jsonify(products)
+    except Exception as e:
+        print(f"Database error during search: {e}")
+        return jsonify({"message": "Error searching for products"}), 500
+
+
 @app.route("/products/<string:product_id>", methods=['GET'])
 def get_product(product_id):
     try:
@@ -69,6 +97,8 @@ def get_product(product_id):
 
 if __name__ == '__main__':
     products_collection.create_index('id', unique=True)
-    print("MongoDB product 'id' index checked/created.")
+    products_collection.create_index([('name', 'text'),
+                                      ('description', 'text')])
+    print("MongoDB product indexes checked/created.")
     seed_database()
     app.run(host='0.0.0.0', port=5002, debug=True)

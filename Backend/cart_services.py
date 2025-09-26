@@ -10,6 +10,8 @@ CORS(app,
      supports_credentials=True,
      origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
 MONGO_URI = os.environ.get('CART_DB_URI')
+if not MONGO_URI:
+    raise RuntimeError("CART_DB_URI not found in .env file")
 client = MongoClient(MONGO_URI)
 db = client.cart_db
 carts_collection = db.carts
@@ -66,6 +68,46 @@ def add_to_cart(user_id):
             },
                                         upsert=True)
         return jsonify({"message": "Item added to cart"}), 200
+    except Exception as e:
+        print(f"Database error: {e}")
+        return jsonify({"message": "Error updating cart"}), 500
+
+
+@app.route("/cart/<string:user_id>/remove", methods=['POST'])
+def remove_from_cart(user_id):
+    data = request.get_json()
+    product_id = data.get('product_id')
+    if not product_id:
+        return jsonify({"message": "Product ID is required"}), 400
+    try:
+        cart = carts_collection.find_one(
+            {
+                'user_id': user_id,
+                'items.product_id': product_id
+            }, {
+                '_id': 0,
+                'items.$': 1
+            })
+        if not cart or not cart.get('items'):
+            return jsonify({"message": "Item not in cart"}), 404
+        current_quantity = cart['items'][0]['quantity']
+        if current_quantity > 1:
+            carts_collection.update_one(
+                {
+                    'user_id': user_id,
+                    'items.product_id': product_id
+                }, {'$inc': {
+                    'items.$.quantity': -1
+                }})
+        else:
+            carts_collection.update_one(
+                {'user_id': user_id},
+                {'$pull': {
+                    'items': {
+                        'product_id': product_id
+                    }
+                }})
+        return jsonify({"message": "Item updated in cart"}), 200
     except Exception as e:
         print(f"Database error: {e}")
         return jsonify({"message": "Error updating cart"}), 500

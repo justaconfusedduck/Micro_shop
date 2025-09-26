@@ -1,1 +1,14 @@
-# /V6/.gitignore
+# Ignore Python artifacts
+__pycache__/
+*.pyc
+
+# Ignore virtual environment folder
+venv_pj/
+
+# Ignore Node.js dependency folder
+frontend/node_modules/
+
+# --- CRITICAL: Ignore all environment files ---
+**/.env
+
+tst.py

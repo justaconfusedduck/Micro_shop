@@ -1,0 +1,167 @@
+# user_service.py (Updated with a secure, two-step registration flow)
+
+# --- 1. IMPORTS (unchanged) ---
+import os, io, uuid, random, string, base64
+from datetime import datetime, timedelta, timezone
+from functools import wraps
+import jwt, requests
+from captcha.image import ImageCaptcha
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify, make_response
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from pymongo import MongoClient
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# --- 2. INITIALIZATION & CONFIGURATION (unchanged) ---
+load_dotenv()
+# ... (all config constants and app/extension initializations are the same)
+SECRET_KEY = os.environ.get('SECRET_KEY')
+MONGO_URI = os.environ.get('USER_DB_URI')
+ACCESS_TOKEN_EXPIRES = timedelta(minutes=10)
+REFRESH_TOKEN_EXPIRES = timedelta(days=7)
+PRE_AUTH_TOKEN_EXPIRES = timedelta(minutes=5)
+OTP_ENABLED = os.environ.get('OTP_ENABLED', 'true').lower() == 'true'
+MAILGUN_API_KEY = os.environ.get('MAILGUN_API_KEY')
+MAILGUN_DOMAIN = os.environ.get('MAILGUN_DOMAIN')
+EMAIL_SENDER = os.environ.get('EMAIL_SENDER')
+if not all([MONGO_URI, SECRET_KEY]): raise RuntimeError("MONGO_URI/SECRET_KEY missing.")
+if OTP_ENABLED and not all([MAILGUN_API_KEY, MAILGUN_DOMAIN, EMAIL_SENDER]): raise RuntimeError("Mailgun settings missing.")
+app = Flask(__name__)
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+limiter = Limiter(get_remote_address, app=app, default_limits=["200/day", "50/hour"], storage_uri="memory://")
+image_captcha = ImageCaptcha(width=280, height=90)
+client = MongoClient(MONGO_URI)
+db = client.user_db
+users_collection = db.users
+refresh_tokens_collection = db.refresh_tokens
+captcha_store = {}
+
+
+# --- 3. SECURITY & DECORATORS (unchanged) ---
+# ... (admin_required decorator is the same)
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization', ' ').split(" ")[-1]
+        if not token: return jsonify({'message': 'Token is missing!'}), 401
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            if data.get('role') != 'admin': return jsonify({'message': 'Requires admin role!'}), 403
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError): return jsonify({'message': 'Token is invalid!'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+# --- 4. HELPER FUNCTIONS (unchanged) ---
+# ... (send_otp_email and _create_and_set_tokens are the same)
+def send_otp_email(recipient_email, otp):
+    if not recipient_email: return False
+    response = requests.post(f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages", auth=("api", MAILGUN_API_KEY), data={"from": EMAIL_SENDER, "to": [recipient_email], "subject": "Your E-Commerce Verification Code", "text": f"Your one-time password is: {otp}\n\nThis code will expire in 5 minutes."})
+    if response.status_code == 200: print(f"OTP email sent to {recipient_email} via Mailgun."); return True
+    else: print(f"Failed to send email via Mailgun: {response.text}"); return False
+
+def _create_and_set_tokens(username, user_role):
+    refresh_tokens_collection.delete_many({'username': username})
+    access_token = jwt.encode({'sub': username, 'role': user_role, 'type': 'access', 'exp': datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRES}, SECRET_KEY, algorithm="HS256")
+    refresh_token = jwt.encode({'sub': username, 'type': 'refresh', 'exp': datetime.now(timezone.utc) + REFRESH_TOKEN_EXPIRES}, SECRET_KEY, algorithm="HS256")
+    refresh_tokens_collection.insert_one({'token': refresh_token, 'username': username})
+    response = make_response(jsonify({'message': 'Login successful', 'access_token': access_token, 'username': username}))
+    response.set_cookie('refresh_token', refresh_token, httponly=True, samesite='None', expires=datetime.now(timezone.utc) + REFRESH_TOKEN_EXPIRES)
+    return response
+
+# --- 5. API ENDPOINTS ---
+
+@app.route("/captcha/new", methods=['GET'])
+def new_captcha(): # ... (unchanged)
+    captcha_id = str(uuid.uuid4()); captcha_text = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    captcha_store[captcha_id] = captcha_text
+    img_bytes = image_captcha.generate(captcha_text).getvalue()
+    img_str = base64.b64encode(img_bytes).decode("utf-8")
+    return jsonify({'captcha_id': captcha_id, 'image': f'data:image/png;base64,{img_str}'})
+
+# --- REGISTRATION FLOW (CHANGED) ---
+
+@app.route("/register/start", methods=['POST'])
+@limiter.limit("10 per hour")
+def register_start():
+    """Step 1 of Registration: Validate details, check CAPTCHA, and send OTP."""
+    data = request.get_json()
+    username = data.get('username'); password = data.get('password'); email = data.get('email')
+    role = data.get('role', 'buyer'); captcha_id = data.get('captcha_id'); captcha_answer = data.get('captcha_answer')
+
+    if not all([username, password, email, captcha_id, captcha_answer]):
+        return jsonify({"message": "All fields, including CAPTCHA, are required"}), 400
+    if role not in ['buyer', 'seller']: return jsonify({"message": "Invalid role"}), 400
+    if users_collection.find_one({"username": username}): return jsonify({"message": "Username already exists"}), 409
+    if users_collection.find_one({"email": email}): return jsonify({"message": "Email is already in use"}), 409
+
+    correct_answer = captcha_store.pop(captcha_id, None)
+    if not correct_answer or captcha_answer.upper() != correct_answer.upper():
+        return jsonify({"message": "Invalid CAPTCHA"}), 401
+        
+    otp = "".join(random.choices(string.digits, k=6))
+    if not send_otp_email(email, otp):
+        return jsonify({"message": "Failed to send verification email."}), 500
+
+    # Create a temporary token containing all the registration data
+    pre_reg_token = jwt.encode({
+        'scope': 'pre-reg-otp',
+        'username': username,
+        'password': generate_password_hash(password, method='pbkdf2:sha256'),
+        'email': email,
+        'role': role,
+        'otp': otp,
+        'exp': datetime.now(timezone.utc) + PRE_AUTH_TOKEN_EXPIRES
+    }, SECRET_KEY, algorithm="HS256")
+
+    return jsonify({'message': 'OTP sent to your email', 'pre_reg_token': pre_reg_token}), 206
+
+@app.route("/register/verify", methods=['POST'])
+@limiter.limit("5 per minute")
+def register_verify():
+    """Step 2 of Registration: Verify OTP and create user."""
+    data = request.get_json()
+    pre_reg_token = data.get('pre_reg_token'); otp_code = data.get('otp_code')
+
+    if not pre_reg_token or not otp_code: return jsonify({'message': 'Token and OTP are required'}), 400
+
+    try:
+        payload = jwt.decode(pre_reg_token, SECRET_KEY, algorithms=["HS256"])
+        if payload.get('scope') != 'pre-reg-otp': return jsonify({'message': 'Invalid token scope'}), 401
+        if payload.get('otp') != otp_code: return jsonify({'message': 'Invalid OTP code'}), 401
+
+        # OTP is valid, create the user
+        users_collection.insert_one({
+            "username": payload['username'],
+            "password": payload['password'],
+            "email": payload['email'],
+            "role": payload['role'],
+        })
+        return jsonify({"message": f"User '{payload['username']}' registered successfully!"}), 201
+
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return jsonify({'message': 'Verification token is invalid or has expired.'}), 401
+
+# --- LOGIN FLOW (unchanged) ---
+@app.route("/login", methods=['POST']) # ... (unchanged)
+@limiter.limit("5 per minute")
+def login(): # ... (unchanged)
+    # ...
+    return jsonify({"message": "Invalid username or password"}), 401
+
+@app.route("/login/verify-otp", methods=['POST']) # ... (unchanged)
+@limiter.limit("5 per minute")
+def verify_otp(): # ... (unchanged)
+    # ...
+    return jsonify({'message': 'Pre-authentication token is invalid or expired!'}), 401
+
+# --- OTHER ENDPOINTS (unchanged) ---
+# ... (/refresh, /logout, /admin/* routes are the same)
+
+# --- 6. APPLICATION RUNNER (unchanged) ---
+if __name__ == '__main__':
+    # ...
+    app.run(host='0.0.0.0', port=5001, debug=True)
+

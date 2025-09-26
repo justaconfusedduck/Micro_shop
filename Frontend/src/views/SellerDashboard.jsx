@@ -34,7 +34,7 @@ export const SellerDashboard = () => {
         setIsLoading(true);
         try {
             const result = await apiCall(`${API_URLS.PRODUCT}/products`);
-            const allProducts = result.data || []; // Use .data and provide a fallback
+            const allProducts = result.data || []; 
             setMyProducts(allProducts.filter(p => p.owner_id === user.name));
         } catch (error) {
             showToast(error.message, 'error');
@@ -60,6 +60,7 @@ export const SellerDashboard = () => {
             });
             setMyProducts(prev => [...prev, newProduct]);
             showToast("Product created successfully!");
+            // Reset form
             setNewProductName('');
             setNewProductDesc('');
             setNewProductPrice('');

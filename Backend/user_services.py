@@ -1,32 +1,25 @@
 import os
-from pymongo import MongoClient
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask import Flask, request, jsonify, make_response
-from flask_cors import CORS
-import jwt
-from datetime import datetime, timedelta, timezone
-from dotenv import load_dotenv
-from functools import wraps
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+import io
+import uuid
 import random
 import string
+import base64
+from datetime import datetime, timedelta, timezone
+from functools import wraps
+import jwt
 import requests
 from captcha.image import ImageCaptcha
-import io
-import base64
-import uuid
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify, make_response
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from pymongo import MongoClient
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
-app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
-limiter = Limiter(get_remote_address,
-                  app=app,
-                  default_limits=["200 per day", "50 per hour"],
-                  storage_uri="memory://")
-image_captcha = ImageCaptcha(width=280, height=90)
-captcha_store = {}
 SECRET_KEY = os.environ.get('SECRET_KEY')
+MONGO_URI = os.environ.get('USER_DB_URI')
 ACCESS_TOKEN_EXPIRES = timedelta(minutes=10)
 REFRESH_TOKEN_EXPIRES = timedelta(days=7)
 PRE_AUTH_TOKEN_EXPIRES = timedelta(minutes=5)
@@ -34,36 +27,23 @@ OTP_ENABLED = os.environ.get('OTP_ENABLED', 'true').lower() == 'true'
 MAILGUN_API_KEY = os.environ.get('MAILGUN_API_KEY')
 MAILGUN_DOMAIN = os.environ.get('MAILGUN_DOMAIN')
 EMAIL_SENDER = os.environ.get('EMAIL_SENDER')
-MONGO_URI = os.environ.get('USER_DB_URI')
 if not all([MONGO_URI, SECRET_KEY]):
     raise RuntimeError("MONGO_URI and SECRET_KEY must be set.")
 if OTP_ENABLED and not all([MAILGUN_API_KEY, MAILGUN_DOMAIN, EMAIL_SENDER]):
     raise RuntimeError(
         "Mailgun settings must be configured in .env when OTP is enabled.")
+app = Flask(__name__)
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+limiter = Limiter(get_remote_address,
+                  app=app,
+                  default_limits=["200/day", "50/hour"],
+                  storage_uri="memory://")
+image_captcha = ImageCaptcha(width=280, height=90)
 client = MongoClient(MONGO_URI)
 db = client.user_db
 users_collection = db.users
 refresh_tokens_collection = db.refresh_tokens
-
-
-def send_otp_email(recipient_email, otp):
-    if not recipient_email: return False
-    response = requests.post(
-        f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
-        auth=("api", MAILGUN_API_KEY),
-        data={
-            "from":
-            EMAIL_SENDER,
-            "to": [recipient_email],
-            "subject":
-            "Your E-Commerce Verification Code",
-            "text":
-            f"Your one-time password is: {otp}\n\nThis code will expire in 5 minutes."
-        })
-    if response.status_code == 200: return True
-    else:
-        print(f"Failed to send email via Mailgun: {response.text}")
-        return False
+captcha_store = {}
 
 
 def admin_required(f):
@@ -84,6 +64,28 @@ def admin_required(f):
         return f(*args, **kwargs)
 
     return decorated
+
+
+def send_otp_email(recipient_email, otp):
+    if not recipient_email: return False
+    response = requests.post(
+        f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
+        auth=("api", MAILGUN_API_KEY),
+        data={
+            "from":
+            EMAIL_SENDER,
+            "to": [recipient_email],
+            "subject":
+            "Your E-Commerce Verification Code",
+            "text":
+            f"Your one-time password is: {otp}\n\nThis code will expire in 5 minutes."
+        })
+    if response.status_code == 200:
+        print(f"OTP email sent to {recipient_email} via Mailgun.")
+        return True
+    else:
+        print(f"Failed to send email via Mailgun: {response.text}")
+        return False
 
 
 def _create_and_set_tokens(username, user_role):
@@ -130,8 +132,7 @@ def new_captcha():
     captcha_text = "".join(
         random.choices(string.ascii_uppercase + string.digits, k=6))
     captcha_store[captcha_id] = captcha_text
-    image_data_buffer = image_captcha.generate(captcha_text)
-    img_bytes = image_data_buffer.getvalue()
+    img_bytes = image_captcha.generate(captcha_text).getvalue()
     img_str = base64.b64encode(img_bytes).decode("utf-8")
     return jsonify({
         'captcha_id': captcha_id,
@@ -139,33 +140,77 @@ def new_captcha():
     })
 
 
-@app.route("/register", methods=['POST'])
+@app.route("/register/start", methods=['POST'])
 @limiter.limit("10 per hour")
-def register():
+def register_start():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
     email = data.get('email')
     role = data.get('role', 'buyer')
-    if not all([username, password, email]):
+    captcha_id = data.get('captcha_id')
+    captcha_answer = data.get('captcha_answer')
+    if not all([username, password, email, captcha_id, captcha_answer]):
         return jsonify(
-            {"message": "Username, password, and email are required"}), 400
+            {"message": "All fields, including CAPTCHA, are required"}), 400
     if role not in ['buyer', 'seller']:
-        return jsonify({"message": "Invalid role specified"}), 400
+        return jsonify({"message": "Invalid role"}), 400
     if users_collection.find_one({"username": username}):
-        return jsonify({"message": "User already exists"}), 409
+        return jsonify({"message": "Username already exists"}), 409
     if users_collection.find_one({"email": email}):
         return jsonify({"message": "Email is already in use"}), 409
-    hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-    users_collection.insert_one({
-        "username": username,
-        "password": hashed_password,
-        "email": email,
-        "role": role
-    })
-    return jsonify(
-        {"message":
-         f"User '{username}' registered successfully as a {role}"}), 201
+    correct_answer = captcha_store.pop(captcha_id, None)
+    if not correct_answer or captcha_answer.upper() != correct_answer.upper():
+        return jsonify({"message": "Incorrect CAPTCHA"}), 401
+    otp = "".join(random.choices(string.digits, k=6))
+    if not send_otp_email(email, otp):
+        return jsonify({"message": "Failed to send verification email."}), 500
+    pre_reg_token = jwt.encode(
+        {
+            'scope': 'pre-reg-otp',
+            'username': username,
+            'password': generate_password_hash(password,
+                                               method='pbkdf2:sha256'),
+            'email': email,
+            'role': role,
+            'otp': otp,
+            'exp': datetime.now(timezone.utc) + PRE_AUTH_TOKEN_EXPIRES
+        },
+        SECRET_KEY,
+        algorithm="HS256")
+    return jsonify({
+        'message': 'OTP sent to your email',
+        'pre_reg_token': pre_reg_token
+    }), 206
+
+
+@app.route("/register/verify", methods=['POST'])
+@limiter.limit("5 per minute")
+def register_verify():
+    data = request.get_json()
+    pre_reg_token = data.get('pre_reg_token')
+    otp_code = data.get('otp_code')
+    if not pre_reg_token or not otp_code:
+        return jsonify({'message': 'Token and OTP are required'}), 400
+    try:
+        payload = jwt.decode(pre_reg_token, SECRET_KEY, algorithms=["HS256"])
+        if payload.get('scope') != 'pre-reg-otp':
+            return jsonify({'message': 'Invalid token scope'}), 401
+        if payload.get('otp') != otp_code:
+            return jsonify({'message': 'Invalid OTP code'}), 401
+        users_collection.insert_one({
+            "username": payload['username'],
+            "password": payload['password'],
+            "email": payload['email'],
+            "role": payload['role'],
+        })
+        return jsonify({
+            "message":
+            f"User '{payload['username']}' registered successfully!"
+        }), 201
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return jsonify(
+            {'message': 'Verification token is invalid or has expired.'}), 401
 
 
 @app.route("/login", methods=['POST'])
@@ -181,9 +226,11 @@ def login():
             {"message": "All fields, including CAPTCHA, are required"}), 400
     correct_answer = captcha_store.pop(captcha_id, None)
     if not correct_answer or captcha_answer.upper() != correct_answer.upper():
-        return jsonify({"message": "Invalid CAPTCHA"}), 401
+        return jsonify({"message": "Incorrect CAPTCHA"}), 401
     user = users_collection.find_one({"username": username})
-    if user and check_password_hash(user['password'], password):
+    if user and user.get('password') and isinstance(
+            user.get('password'), str) and check_password_hash(
+                user['password'], password):
         user_email = user.get("email")
         if OTP_ENABLED and user_email:
             otp = "".join(random.choices(string.digits, k=6))

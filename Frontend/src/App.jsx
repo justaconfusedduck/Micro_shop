@@ -18,7 +18,7 @@ const MainController = () => {
             inactivityTimer = setTimeout(() => {
                 console.log("User has been inactive for 1 minute. Logging out.");
                 logout();
-            }, 1 * 60 * 1000); 
+            }, 1 * 60 * 1000);
         };
 
         const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
@@ -35,7 +35,7 @@ const MainController = () => {
                 window.removeEventListener(event, resetTimer);
             });
         };
-    }, [user, logout]);
+    }, [user, logout]); 
 
 
     useEffect(() => {

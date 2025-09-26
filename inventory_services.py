@@ -4,7 +4,9 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["null", "http://127.0.0.1:8080"])
+CORS(app,
+     supports_credentials=True,
+     origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
 MONGO_URI = os.environ.get(
     'INVENTORY_DB_URI',
     'mongodb+srv://Not_GB:4Fuoje4xVWMt7yRb@zero.uvzi6xo.mongodb.net/?retryWrites=true&w=majority&appName=Zero'

@@ -29,101 +29,102 @@
         }
     </style>
 </head>
-<body class="bg-gray-100">
+<body class="bg-gray-100 flex items-center justify-center h-screen">
 
-    <div class="container mx-auto p-4">
-        <header class="bg-white shadow rounded p-4 mb-4 flex justify-center items-center">
-            <h1 class="text-3xl font-bold text-gray-800">Micro-Shop</h1>
-        </header>
-
-        <main>
-            <div id="auth-view" class="max-w-sm mx-auto bg-white p-6 rounded-lg shadow mt-10">
-                <h2 class="text-2xl font-bold mb-6 text-center">Welcome</h2>
-                <form id="auth-form" class="space-y-4">
-                    <input type="text" id="auth-username" placeholder="Username" class="w-full p-2 border rounded" required>
-                    <input type="password" id="auth-password" placeholder="Password" class="w-full p-2 border rounded" required>
-                    <div class="flex space-x-4 pt-2">
-                        <button type="button" id="login-btn" class="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600">Login</button>
-                        <button type="button" id="register-btn" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Register</button>
-                    </div>
-                </form>
+    <div class="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
+        <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">Welcome Back</h2>
+        <form id="auth-form" class="space-y-4">
+            <div>
+                <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+                <input type="text" id="username" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required>
             </div>
-        </main>
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                <input type="password" id="password" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required>
+            </div>
+            <div class="flex items-center space-x-4 pt-2">
+                <button type="submit" id="login-button" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                    Login
+                </button>
+                <button type="submit" id="register-button" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Register
+                </button>
+            </div>
+        </form>
     </div>
-    
+
     <div id="toast" class="toast"></div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const USER_SERVICE = 'http://127.0.0.1:5001';
+            const authForm = document.getElementById('auth-form');
+            const loginButton = document.getElementById('login-button');
+            const registerButton = document.getElementById('register-button');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
             const toast = document.getElementById('toast');
 
-            const setAccessToken = (access) => {
-                localStorage.setItem('accessToken', access);
-            };
-             const getAccessToken = () => localStorage.getItem('accessToken');
-
-             const showToast = (message, isError = false) => {
+            const showToast = (message, isError = false) => {
                 toast.textContent = message;
                 toast.style.backgroundColor = isError ? '#EF4444' : '#22C55E';
                 toast.classList.add('show');
                 setTimeout(() => toast.classList.remove('show'), 3000);
             };
 
-            const apiCall = async (url, options = {}) => {
-                options.credentials = 'include'; // Send cookies
+            const handleAuth = async (endpoint) => {
+                const username = usernameInput.value;
+                const password = passwordInput.value;
+
+                if (!username || !password) {
+                    showToast("Username and password are required.", true);
+                    return;
+                }
+
                 try {
-                    const response = await fetch(url, options);
-                    const data = await response.json();
+                    const response = await fetch(`${USER_SERVICE}/${endpoint}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include', 
+                        body: JSON.stringify({ username, password })
+                    });
+                    
+                    const result = await response.json();
+
                     if (!response.ok) {
-                        throw new Error(data.message || `HTTP error! status: ${response.status}`);
+                        throw new Error(result.message || 'An error occurred.');
                     }
-                    return data;
+
+                    if (endpoint === 'login') {
+                        if (result.access_token && result.username) {
+                            localStorage.setItem('accessToken', result.access_token);
+                            localStorage.setItem('username', result.username);
+                            showToast(result.message);
+                            window.location.replace('./index.html');
+                        } else {
+                            throw new Error("Login response was missing required data.");
+                        }
+                    } else { 
+                        showToast(result.message);
+                        authForm.reset();
+                    }
                 } catch (error) {
-                    console.error('API Call Failed:', error);
+                    console.error('Authentication Error:', error);
                     showToast(error.message, true);
-                    throw error;
                 }
             };
             
-            const registerUser = (username, password) => apiCall(`${USER_SERVICE}/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-            const loginUser = (username, password) => apiCall(`${USER_SERVICE}/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-
-            document.getElementById('register-btn').addEventListener('click', async (e) => {
+            loginButton.addEventListener('click', (e) => {
                 e.preventDefault();
-                const username = document.getElementById('auth-username').value;
-                const password = document.getElementById('auth-password').value;
-                if (!username || !password) {
-                    showToast("Username and password are required.", true);
-                    return;
-                }
-                try {
-                    const result = await registerUser(username, password);
-                    showToast(result.message);
-                    document.getElementById('auth-form').reset();
-                } catch (err) {}
+                handleAuth('login');
             });
 
-            document.getElementById('login-btn').addEventListener('click', async (e) => {
+            registerButton.addEventListener('click', (e) => {
                 e.preventDefault();
-                const username = document.getElementById('auth-username').value;
-                const password = document.getElementById('auth-password').value;
-                if (!username || !password) {
-                    showToast("Username and password are required.", true);
-                    return;
-                }
-                try {
-                    const result = await loginUser(username, password);
-                    setAccessToken(result.access_token);
-                    showToast(result.message);
-                    window.location.href = 'index.html';
-                } catch (err) {}
+                handleAuth('register');
             });
-            
-            if (getAccessToken()) {
-                window.location.href = 'index.html';
-            }
         });
     </script>
 </body>
 </html>
+

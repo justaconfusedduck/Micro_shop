@@ -7,7 +7,9 @@ import jwt
 from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["null", "http://127.0.0.1:8080"])
+CORS(app,
+     supports_credentials=True,
+     origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
 app.config['SECRET_KEY'] = os.urandom(24).hex()
 ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
 REFRESH_TOKEN_EXPIRES = timedelta(days=7)
@@ -133,4 +135,4 @@ if __name__ == '__main__':
     users_collection.create_index('username', unique=True)
     refresh_tokens_collection.create_index('token', unique=True)
     print("MongoDB indexes checked/created.")
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(port=5001, debug=True)

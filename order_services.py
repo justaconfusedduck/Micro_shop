@@ -8,8 +8,10 @@ import requests
 from datetime import datetime, timezone
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["null", "http://127.0.0.1:8080"])
-PRODUCT_SERVICE_URL = "http://1227.0.0.1:5002"
+CORS(app,
+     supports_credentials=True,
+     origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
+PRODUCT_SERVICE_URL = "http://127.0.0.1:5002"
 INVENTORY_SERVICE_URL = "http://127.0.0.1:5003"
 CART_SERVICE_URL = "http://127.0.0.1:5004"
 MONGO_URI = os.environ.get(

@@ -84,6 +84,7 @@ const AuthPage = () => {
     const { login } = useAuth();
     const [view, setView] = useState('login'); 
     
+    // Form state
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');

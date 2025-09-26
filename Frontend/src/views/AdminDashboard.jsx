@@ -17,7 +17,7 @@ const Toast = ({ message, type, onDismiss }) => {
 
 export const AdminDashboard = () => {
     const { user, logout } = useAuth();
-    const [view, setView] = useState('users'); 
+    const [view, setView] = useState('users');
     const [users, setUsers] = useState([]);
     const [products, setProducts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);

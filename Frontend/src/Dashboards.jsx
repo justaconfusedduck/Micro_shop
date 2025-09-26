@@ -83,6 +83,7 @@ export const SellerDashboard = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [toast, setToast] = useState(null);
 
+    // State for the "Add Product" form
     const [newProductName, setNewProductName] = useState('');
     const [newProductDesc, setNewProductDesc] = useState('');
     const [newProductPrice, setNewProductPrice] = useState('');

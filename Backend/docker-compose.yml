@@ -1,0 +1,63 @@
+# This file defines and configures all our backend microservices for Docker.
+version: '3.8'
+
+services:
+  user_service:
+    build: .
+    command: python user_services.py
+    ports:
+      - "5001:5001"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+
+  product_service:
+    build: .
+    command: python product_services.py
+    ports:
+      - "5002:5002"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+
+  inventory_service:
+    build: .
+    command: python inventory_services.py
+    ports:
+      - "5003:5003"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+
+  cart_service:
+    build: .
+    command: python cart_services.py
+    ports:
+      - "5004:5004"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+
+  order_service:
+    build: .
+    command: python order_services.py
+    ports:
+      - "5005:5005"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+
+  wishlist_service:
+    build: .
+    command: python wishlist_service.py
+    ports:
+      - "5006:5006"
+    volumes:
+      - .:/app
+    env_file:
+      - .env

@@ -29,18 +29,22 @@ def register():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
+    role = data.get('role', 'buyer')
     if not username or not password:
         return jsonify({"message": "Username and password are required"}), 400
+    if role not in ['buyer', 'seller']:
+        return jsonify({"message": "Invalid role specified"}), 400
     if users_collection.find_one({"username": username}):
         return jsonify({"message": "User already exists"}), 409
     hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
     users_collection.insert_one({
         "username": username,
         "password": hashed_password,
-        "role": "buyer"
+        "role": role
     })
-    return jsonify({"message":
-                    f"User {username} registered successfully"}), 201
+    return jsonify(
+        {"message":
+         f"User {username} registered successfully as a {role}"}), 201
 
 
 @app.route("/login", methods=['POST'])

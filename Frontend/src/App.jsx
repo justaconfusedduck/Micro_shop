@@ -1,7 +1,9 @@
-import React, { useEffect, useContext } from 'react';
-import { AuthProvider, useAuth } from './Auth.jsx';
-import { BuyerDashboard, SellerDashboard, AdminDashboard } from './Dashboards.jsx';
-import AuthPage from './Auth.jsx';
+import React, { useEffect } from 'react';
+import { AuthProvider, useAuth } from './Auth';
+import { BuyerDashboard } from './views/BuyerDashboard';
+import { SellerDashboard } from './views/SellerDashboard';
+import { AdminDashboard } from './views/AdminDashboard';
+import AuthPage from './Auth';
 
 const MainController = () => {
     const { user, logout } = useAuth();

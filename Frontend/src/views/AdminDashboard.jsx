@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth, apiCall } from '../Auth';
+import { useAuth, apiCall } from '../Auth.jsx';
 
 const API_URLS = {
     USER: 'http://127.0.0.1:5001',
@@ -18,6 +18,7 @@ const Toast = ({ message, type, onDismiss }) => {
 export const AdminDashboard = () => {
     const { user, logout } = useAuth();
     const [view, setView] = useState('users'); 
+    const [users, setUsers] = useState([]);
     const [products, setProducts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [toast, setToast] = useState(null);
@@ -27,12 +28,12 @@ export const AdminDashboard = () => {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [usersData, productsData] = await Promise.all([
+            const [usersResult, productsResult] = await Promise.all([
                 apiCall(`${API_URLS.USER}/admin/users`),
-                apiCall(`${API_URLS.PRODUCT}/products`), 
+                apiCall(`${API_URLS.PRODUCT}/products`),
             ]);
-            setUsers(usersData);
-            setProducts(productsData);
+            setUsers(usersResult.data || []);
+            setProducts(productsResult.data || []);
         } catch (error) {
             showToast(error.message, 'error');
         } finally {

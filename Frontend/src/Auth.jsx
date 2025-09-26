@@ -35,7 +35,7 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         localStorage.removeItem('username');
         localStorage.removeItem('accessToken');
-        apiCall(`${API_URLS.USER}/logout`, { method: 'POST' }).catch(console.error);
+        apiCall(`${API_URLS.USER}/logout`, { method: 'POST' }, true).catch(console.error);
     }, []);
 
     const authContextValue = { user, login, logout };
@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => useContext(AuthContext);
 
 
-export const apiCall = async (url, options = {}) => {
+export const apiCall = async (url, options = {}, suppressErrors = false) => {
     options.credentials = 'include';
     const token = localStorage.getItem('accessToken');
     options.headers = {
@@ -70,17 +70,26 @@ export const apiCall = async (url, options = {}) => {
             options.headers['Authorization'] = `Bearer ${access_token}`;
             response = await fetch(url, options);
         }
+        
+        if (response.status === 206) {
+            return { status: 206, data: await response.json() };
+        }
+
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
         }
         const text = await response.text();
-        return text ? JSON.parse(text) : {};
+        const data = text ? JSON.parse(text) : {};
+        return { status: response.status, data };
+
     } catch (error) {
         if (error.message.includes("Session expired")) {
              window.dispatchEvent(new CustomEvent('force-logout'));
         }
-        throw error;
+        if(!suppressErrors) {
+            throw error;
+        }
     }
 };
 
@@ -90,19 +99,67 @@ const AuthPage = () => {
     
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [email, setEmail] = useState(''); 
-    const [role, setRole] = useState('buyer'); 
+    const [email, setEmail] = useState('');
+    const [role, setRole] = useState('buyer');
+    
+    const [captcha, setCaptcha] = useState(null);
+    const [captchaAnswer, setCaptchaAnswer] = useState('');
+    
+    const [otp, setOtp] = useState('');
+    const [preAuthToken, setPreAuthToken] = useState(null);
 
     const [error, setError] = useState(null);
     const [message, setMessage] = useState(null);
+    
+    const fetchCaptcha = useCallback(async () => {
+        try {
+            const result = await apiCall(`${API_URLS.USER}/captcha/new`);
+            if (result && result.data) setCaptcha(result.data);
+        } catch (err) {
+            setError("Failed to load CAPTCHA. Please refresh the page.");
+        }
+    }, []);
+
+    useEffect(() => {
+        if (view === 'login') {
+            fetchCaptcha();
+        }
+    }, [view, fetchCaptcha]);
     
     const handleLogin = async () => {
         setError(null); setMessage(null);
         try {
             const result = await apiCall(`${API_URLS.USER}/login`, {
-                method: 'POST', body: JSON.stringify({ username, password })
+                method: 'POST', 
+                body: JSON.stringify({ 
+                    username, 
+                    password,
+                    captcha_id: captcha?.captcha_id,
+                    captcha_answer: captchaAnswer
+                })
             });
-            login(result.username, result.access_token);
+
+            if (result.status === 206) {
+                setMessage(result.data.message);
+                setPreAuthToken(result.data.pre_auth_token);
+                setView('otp');
+            } else if (result.status === 200) {
+                login(result.data.username, result.data.access_token);
+            }
+        } catch (err) { 
+            setError(err.message);
+            fetchCaptcha();
+            setCaptchaAnswer('');
+        }
+    };
+
+    const handleVerifyOtp = async () => {
+        setError(null); setMessage(null);
+        try {
+             const result = await apiCall(`${API_URLS.USER}/login/verify-otp`, {
+                method: 'POST', body: JSON.stringify({ pre_auth_token: preAuthToken, otp_code: otp })
+            });
+            login(result.data.username, result.data.access_token);
         } catch (err) { setError(err.message); }
     };
     
@@ -112,63 +169,71 @@ const AuthPage = () => {
             const result = await apiCall(`${API_URLS.USER}/register`, {
                 method: 'POST', body: JSON.stringify({ username, password, email, role })
             });
-            setMessage(result.message + " Please log in.");
+            setMessage(result.data.message + " Please log in.");
             setView('login');
         } catch (err) { setError(err.message); }
     };
 
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100">
-            <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
-                {error && <div className="p-3 text-sm text-red-700 bg-red-100 rounded-lg">{error}</div>}
-                {message && <div className="p-3 text-sm text-green-700 bg-green-100 rounded-lg">{message}</div>}
-                
-                {view === 'login' ? (
+    const renderContent = () => {
+        switch (view) {
+            case 'otp':
+                return (
                     <div>
-                        <h2 className="text-3xl font-bold text-center text-gray-800">Login</h2>
+                        <h2 className="text-3xl font-bold text-center text-gray-800">Enter Verification Code</h2>
+                        <p className="mt-2 text-sm text-center text-gray-600">{message}</p>
                         <div className="mt-6 space-y-4">
-                            <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-2 border rounded-md" />
-                            <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-md" />
+                            <input type="text" placeholder="6-Digit OTP" value={otp} onChange={e => setOtp(e.target.value)} className="w-full px-4 py-2 text-center border rounded-md" maxLength="6" />
                         </div>
-                        <button onClick={handleLogin} className="w-full px-4 py-2 mt-6 font-semibold text-white bg-green-600 rounded-md hover:bg-green-700">Login</button>
-                        <p className="mt-4 text-sm text-center text-gray-600">
-                            Don't have an account?{' '}
-                            <button onClick={() => setView('register')} className="font-medium text-blue-600 hover:underline">
-                                Register here
-                            </button>
-                        </p>
+                        <button onClick={handleVerifyOtp} className="w-full px-4 py-2 mt-6 font-semibold text-white bg-green-600 rounded-md hover:bg-green-700">Verify & Login</button>
                     </div>
-                ) : (
+                );
+            case 'register':
+                return (
                     <div>
                         <h2 className="text-3xl font-bold text-center text-gray-800">Create Account</h2>
                         <div className="mt-6 space-y-4">
                             <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-2 border rounded-md" required />
                             <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-2 border rounded-md" required />
                             <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-md" required />
-                            
-                            <fieldset className="pt-2">
-                                <legend className="text-sm font-medium text-gray-700">I am a:</legend>
-                                <div className="flex items-center mt-2 space-x-6">
-                                    <label className="flex items-center">
-                                        <input type="radio" name="role" value="buyer" checked={role === 'buyer'} onChange={() => setRole('buyer')} className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                                        <span className="ml-2 text-sm text-gray-700">Buyer</span>
-                                    </label>
-                                    <label className="flex items-center">
-                                        <input type="radio" name="role" value="seller" checked={role === 'seller'} onChange={() => setRole('seller')} className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                                        <span className="ml-2 text-sm text-gray-700">Seller</span>
-                                    </label>
-                                </div>
-                            </fieldset>
+                            <fieldset className="pt-2"><legend className="text-sm font-medium text-gray-700">I am a:</legend><div className="flex items-center mt-2 space-x-6"><label className="flex items-center"><input type="radio" name="role" value="buyer" checked={role === 'buyer'} onChange={() => setRole('buyer')} className="w-4 h-4 text-blue-600 border-gray-300" /><span className="ml-2 text-sm text-gray-700">Buyer</span></label><label className="flex items-center"><input type="radio" name="role" value="seller" checked={role === 'seller'} onChange={() => setRole('seller')} className="w-4 h-4 text-blue-600 border-gray-300" /><span className="ml-2 text-sm text-gray-700">Seller</span></label></div></fieldset>
                         </div>
                         <button onClick={handleRegister} className="w-full px-4 py-2 mt-6 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700">Register</button>
-                         <p className="mt-4 text-sm text-center text-gray-600">
-                            Already have an account?{' '}
-                            <button onClick={() => setView('login')} className="font-medium text-blue-600 hover:underline">
-                                Login here
-                            </button>
-                        </p>
+                        <p className="mt-4 text-sm text-center text-gray-600">Already have an account?{' '}<button onClick={() => setView('login')} className="font-medium text-blue-600 hover:underline">Login here</button></p>
                     </div>
-                )}
+                );
+            case 'login':
+            default:
+                return (
+                    <div>
+                        <h2 className="text-3xl font-bold text-center text-gray-800">Login</h2>
+                        <div className="mt-6 space-y-4">
+                            <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-2 border rounded-md" />
+                            <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-md" />
+                            {captcha && (
+                                <div className="p-4 space-y-3 bg-gray-100 border rounded-md">
+                                    <div className="flex items-center justify-center">
+                                        <img src={captcha.image} alt="CAPTCHA" className="rounded" />
+                                        <button onClick={fetchCaptcha} className="ml-4 p-2 text-gray-500 hover:text-gray-800" title="Get a new CAPTCHA">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M20 4h-5v5M4 20h5v-5" /></svg>
+                                        </button>
+                                    </div>
+                                    <input type="text" placeholder="Enter CAPTCHA" value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)} className="w-full px-4 py-2 text-center border rounded-md" />
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={handleLogin} className="w-full px-4 py-2 mt-6 font-semibold text-white bg-green-600 rounded-md hover:bg-green-700">Login</button>
+                        <p className="mt-4 text-sm text-center text-gray-600">Don't have an account?{' '}<button onClick={() => setView('register')} className="font-medium text-blue-600 hover:underline">Register here</button></p>
+                    </div>
+                );
+        }
+    };
+
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100">
+            <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
+                {error && <div className="p-3 text-sm text-red-700 bg-red-100 rounded-lg">{error}</div>}
+                {message && !error && <div className="p-3 text-sm text-blue-700 bg-blue-100 rounded-lg">{message}</div>}
+                {renderContent()}
             </div>
         </div>
     );

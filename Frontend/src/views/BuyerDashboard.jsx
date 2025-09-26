@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth, apiCall } from '../Auth';
+import { useAuth, apiCall } from '../Auth.jsx';
 
 const API_URLS = {
     PRODUCT: 'http://127.0.0.1:5002',
@@ -62,8 +62,9 @@ export const BuyerDashboard = () => {
         if (missingIds.length === 0) return;
         try {
             const detailPromises = missingIds.map(id => apiCall(`${API_URLS.PRODUCT}/products/${id}`));
-            const detailsArray = await Promise.all(detailPromises);
-            const newDetails = detailsArray.reduce((acc, detail) => {
+            const detailsResults = await Promise.all(detailPromises);
+            const newDetails = detailsResults.reduce((acc, result) => {
+                const detail = result.data;
                 if (detail && detail.id) acc[detail.id] = detail;
                 return acc;
             }, {});
@@ -81,9 +82,9 @@ export const BuyerDashboard = () => {
                 apiCall(`${API_URLS.WISHLIST}/wishlist/${user.name}`),
             ]);
             
-            const productsData = results[0].status === 'fulfilled' ? results[0].value : [];
-            const cartData = results[1].status === 'fulfilled' ? results[1].value : [];
-            const wishlistData = results[2].status === 'fulfilled' ? results[2].value : [];
+            const productsData = results[0].status === 'fulfilled' ? results[0].value.data : [];
+            const cartData = results[1].status === 'fulfilled' ? results[1].value.data : [];
+            const wishlistData = results[2].status === 'fulfilled' ? results[2].value.data : [];
             
             if (results[0].status === 'rejected') showToast('Could not load products.', 'error');
             if (results[1].status === 'rejected') showToast('Could not load cart.', 'error');
@@ -98,6 +99,7 @@ export const BuyerDashboard = () => {
                 return acc;
             }, {});
             setProductDetails(initialDetails);
+
         } catch (error) {
             showToast(error.message, 'error');
         }
@@ -107,13 +109,13 @@ export const BuyerDashboard = () => {
         const searchProducts = async () => {
             if (debouncedSearchQuery) {
                 try {
-                    const searchResults = await apiCall(`${API_URLS.PRODUCT}/products/search?q=${debouncedSearchQuery}`);
-                    setProducts(searchResults);
+                    const result = await apiCall(`${API_URLS.PRODUCT}/products/search?q=${debouncedSearchQuery}`);
+                    setProducts(result.data);
                 } catch (error) {
                     showToast(error.message, 'error');
                 }
             } else if (searchQuery === '') {
-                apiCall(`${API_URLS.PRODUCT}/products`).then(setProducts).catch(err => showToast(err.message, 'error'));
+                apiCall(`${API_URLS.PRODUCT}/products`).then(result => setProducts(result.data)).catch(err => showToast(err.message, 'error'));
             }
         };
         searchProducts();
@@ -154,16 +156,16 @@ export const BuyerDashboard = () => {
     
     const handleViewOrders = async () => {
          try {
-            const ordersData = await apiCall(`${API_URLS.ORDER}/orders/${user.name}`);
-            setOrders(ordersData);
+            const result = await apiCall(`${API_URLS.ORDER}/orders/${user.name}`);
+            setOrders(result.data);
             setCurrentView('orders');
         } catch (error) { showToast(error.message, 'error'); }
     };
     
     const handleCheckout = async () => {
         try {
-            const order = await apiCall(`${API_URLS.ORDER}/orders/create/${user.name}`, { method: 'POST' });
-            showToast(`Order ${order.order_id.substring(0,8)} placed!`);
+            await apiCall(`${API_URLS.ORDER}/orders/create/${user.name}`, { method: 'POST' });
+            showToast(`Order placed!`);
             setCart([]);
             setCurrentView('shop');
         } catch(error) { showToast(error.message, 'error'); }
@@ -209,15 +211,8 @@ export const BuyerDashboard = () => {
                                     if (!product) return <div key={item.product_id} className="py-4 border-b">Loading item...</div>;
                                     return (
                                         <div key={item.product_id} className="flex justify-between items-center py-4 border-b">
-                                            <div>
-                                                <p className="font-semibold">{product.name}</p>
-                                                <p className="text-gray-600">${product.price.toFixed(2)} each</p>
-                                            </div>
-                                            <div className="flex items-center space-x-3">
-                                                <button onClick={() => handleUpdateCart(item.product_id, -1)} className="px-2 py-1 border rounded">-</button>
-                                                <span>{item.quantity}</span>
-                                                <button onClick={() => handleUpdateCart(item.product_id, 1)} className="px-2 py-1 border rounded">+</button>
-                                            </div>
+                                            <div><p className="font-semibold">{product.name}</p><p className="text-gray-600">${product.price.toFixed(2)} each</p></div>
+                                            <div className="flex items-center space-x-3"><button onClick={() => handleUpdateCart(item.product_id, -1)} className="px-2 py-1 border rounded">-</button><span>{item.quantity}</span><button onClick={() => handleUpdateCart(item.product_id, 1)} className="px-2 py-1 border rounded">+</button></div>
                                             <span className="font-semibold">${(product.price * item.quantity).toFixed(2)}</span>
                                         </div>
                                     );
@@ -228,35 +223,35 @@ export const BuyerDashboard = () => {
                                 </div>
                             </div>
                         )}
-                        <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">← Back to Shop</button>
+                        <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">Back to Shop</button>
                     </div>
                  )}
                  {currentView === 'wishlist' && (
                      <div className="p-8">
                         <h2 className="text-3xl font-bold mb-6">Your Wishlist</h2>
                          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                            {wishlist.length === 0 ? <p className="col-span-full">Your wishlist is empty.</p> : wishlist.map(productId => {
+                            {wishlist.length === 0 ? <p className="col-span-full text-center">Your wishlist is empty.</p> : wishlist.map(productId => {
                                 const product = productDetails[productId];
                                 if (!product) return <div key={productId} className="p-4 text-center bg-white rounded-lg shadow">Loading...</div>;
                                 return <ProductCard key={productId} product={product} isWishlisted={true} onAddToCart={() => handleUpdateCart(productId, 1)} onToggleWishlist={handleToggleWishlist} />;
                             })}
                          </div>
-                         <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">← Back to Shop</button>
+                         <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">Back to Shop</button>
                      </div>
                  )}
-                 {currentView === 'orders' && (
+                  {currentView === 'orders' && (
                      <div className="p-8 bg-white rounded-lg shadow-xl">
-                        <h2 className="text-3xl font-bold mb-6">Your Orders</h2>
-                        <div className="space-y-4">
-                        {orders.length === 0 ? <p>You have no past orders.</p> : orders.map(order => (
-                             <div key={order.order_id} className="p-4 border rounded-md">
-                                <p className="font-bold">Order ID: {order.order_id.substring(0,8)}</p>
-                                <p>Date: {new Date(order.created_at).toLocaleDateString()}</p>
-                                <p>Total: ${order.total_price.toFixed(2)}</p>
-                             </div>
-                        ))}
-                        </div>
-                         <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">← Back to Shop</button>
+                         <h2 className="text-3xl font-bold mb-6">Your Orders</h2>
+                         <div className="space-y-4">
+                         {orders.length === 0 ? <p>You have no past orders.</p> : orders.map(order => (
+                              <div key={order.order_id} className="p-4 border rounded-md">
+                                 <p className="font-bold">Order ID: {order.order_id.substring(0,8)}</p>
+                                 <p>Date: {new Date(order.created_at).toLocaleDateString()}</p>
+                                 <p>Total: ${order.total_price.toFixed(2)}</p>
+                              </div>
+                         ))}
+                         </div>
+                          <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">Back to Shop</button>
                      </div>
                  )}
             </main>

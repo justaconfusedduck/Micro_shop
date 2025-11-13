@@ -434,7 +434,7 @@ export const BuyerDashboard = () => {
         setPaymentError(null);
 
         try {
-            const result = await apiCall(`${API_URLS.ORDER}/orders/create/${user.name}`, { method: 'POST' });
+            const result = await apiCall(`${API_URLS.ORDER}/orders/create`, { method: 'POST' });
             
             showToast(`Order placed! Order ID: ${result.data.order_id}`);
             setCart([]);

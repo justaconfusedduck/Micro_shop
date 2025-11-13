@@ -1,13 +1,14 @@
 import os
+from pymongo import MongoClient, DESCENDING, ASCENDING
+import json
 import uuid
-from datetime import datetime, timezone
-from functools import wraps
-import jwt
-import requests
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+import requests
+from datetime import datetime, timezone
 from dotenv import load_dotenv
-from pymongo import MongoClient, DESCENDING
+import jwt
+from functools import wraps
 
 load_dotenv()
 
@@ -15,11 +16,11 @@ app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 
 MONGO_URI = os.environ.get('REVIEW_DB_URI')
-SECRET_KEY = os.environ.get('SECRET_KEY')
 ORDER_SERVICE_URL = "http://order_service:5005"
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
-if not MONGO_URI or not SECRET_KEY:
-    raise RuntimeError("REVIEW_DB_URI or SECRET_KEY not found in .env file")
+if not MONGO_URI or not SECRET_KEY or not ORDER_SERVICE_URL:
+    raise RuntimeError("Database URI, Secret Key, or Order Service URL not found")
 
 client = MongoClient(MONGO_URI)
 db = client.review_db
@@ -34,10 +35,29 @@ def buyer_required(f):
         if not token: return jsonify({'message': 'Authentication Token is missing!'}), 401
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            if data.get('role') != 'buyer': return jsonify({'message': 'This action requires a buyer account!'}), 403
-            return f(data.get('sub'), *args, **kwargs)
+            if data.get('role') not in ['buyer', 'admin']: 
+                return jsonify({'message': 'This action requires a buyer or admin account!'}), 403
+            kwargs['current_user_id'] = data.get('sub')
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             return jsonify({'message': 'Token is invalid or expired!'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+def seller_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+        token = request.headers.get('Authorization', ' ').split(" ")[-1]
+        if not token: return jsonify({'message': 'Authentication Token is missing!'}), 401
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            if data.get('role') not in ['seller', 'admin']: 
+                return jsonify({'message': 'This action requires a seller or admin account!'}), 403
+            kwargs['current_user'] = data
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            return jsonify({'message': 'Token is invalid or expired!'}), 401
+        return f(*args, **kwargs)
     return decorated
 
 def admin_required(f):
@@ -49,98 +69,12 @@ def admin_required(f):
         if not token: return jsonify({'message': 'Authentication Token is missing!'}), 401
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            if data.get('role') != 'admin': return jsonify({'message': 'This action requires an admin account!'}), 403
+            if data.get('role') != 'admin': 
+                return jsonify({'message': 'This action requires an admin account!'}), 403
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             return jsonify({'message': 'Token is invalid or expired!'}), 401
         return f(*args, **kwargs)
     return decorated
-
-@app.route("/reviews/check_eligibility", methods=['POST', 'OPTIONS'])
-@buyer_required
-def check_eligibility(current_user):
-    data = request.get_json()
-    product_id = data.get('product_id')
-    if not product_id:
-        return jsonify({"message": "Product ID is required"}), 400
-
-    try:
-        order_response = requests.get(
-            f"{ORDER_SERVICE_URL}/orders/{current_user}",
-            headers={'Authorization': request.headers.get('Authorization')}
-        )
-        if order_response.status_code != 200:
-            return jsonify({"message": "Could not verify purchase history"}), 500
-        
-        orders = order_response.json()
-        
-        has_purchased = any(
-            item['product_id'] == product_id for order in orders for item in order.get('items', [])
-        )
-        
-        if not has_purchased:
-            return jsonify({"eligible": False, "message": "You must purchase this item to review it."}), 200
-
-        existing_review = reviews_collection.find_one({
-            'user_id': current_user,
-            'product_id': product_id
-        })
-        
-        if existing_review:
-             return jsonify({"eligible": False, "message": "You have already reviewed this item."}), 200
-
-        return jsonify({"eligible": True}), 200
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error connecting to Order Service: {e}")
-        return jsonify({"message": "Could not connect to order service"}), 503
-
-@app.route("/reviews", methods=['POST', 'OPTIONS'])
-@buyer_required
-def submit_review(current_user):
-    data = request.get_json()
-    product_id = data.get('product_id')
-    rating = data.get('rating')
-    comment = data.get('comment')
-
-    if not product_id or not rating or not comment:
-        return jsonify({"message": "Product ID, rating, and comment are required"}), 400
-    
-    if not isinstance(rating, int) or not (1 <= rating <= 5):
-        return jsonify({"message": "Rating must be an integer between 1 and 5"}), 400
-
-    existing_review = reviews_collection.find_one({
-        'user_id': current_user,
-        'product_id': product_id
-    })
-    
-    if existing_review:
-        return jsonify({"message": "You have already submitted a review for this product"}), 409
-
-    new_review = {
-        "review_id": str(uuid.uuid4()),
-        "user_id": current_user,
-        "product_id": product_id,
-        "rating": rating,
-        "comment": comment,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc)
-    }
-    reviews_collection.insert_one(new_review)
-    
-    return jsonify({"message": "Review submitted successfully. It is pending approval."}), 201
-
-@app.route("/reviews/<string:product_id>", methods=['GET', 'OPTIONS'])
-def get_reviews(product_id):
-    if request.method == 'OPTIONS':
-        return jsonify({}), 200
-    try:
-        reviews = list(reviews_collection.find(
-            {'product_id': product_id, 'status': 'approved'},
-            {'_id': 0}
-        ).sort('created_at', DESCENDING))
-        return jsonify(reviews), 200
-    except Exception as e:
-        return jsonify({"message": f"Error fetching reviews: {e}"}), 500
 
 @app.route("/reviews/average/<string:product_id>", methods=['GET', 'OPTIONS'])
 def get_average_rating(product_id):
@@ -148,71 +82,178 @@ def get_average_rating(product_id):
         return jsonify({}), 200
     try:
         pipeline = [
-            {'$match': {'product_id': product_id, 'status': 'approved'}},
-            {'$group': {
-                '_id': '$product_id',
-                'averageRating': {'$avg': '$rating'},
-                'reviewCount': {'$sum': 1}
-            }}
+            {"$match": {"product_id": product_id, "status": "approved"}},
+            {"$group": {"_id": "$product_id", "averageRating": {"$avg": "$rating"}, "reviewCount": {"$sum": 1}}}
         ]
         result = list(reviews_collection.aggregate(pipeline))
-        
         if not result:
             return jsonify({"product_id": product_id, "averageRating": 0, "reviewCount": 0}), 200
-            
-        return jsonify({
-            "product_id": product_id,
-            "averageRating": round(result[0]['averageRating'], 2),
-            "reviewCount": result[0]['reviewCount']
-        }), 200
+        
+        result[0]['product_id'] = result[0].pop('_id')
+        return jsonify(result[0]), 200
     except Exception as e:
-        return jsonify({"message": f"Error calculating average: {e}"}), 500
+        return jsonify({"message": f"Error fetching average rating: {e}"}), 500
+
+@app.route("/reviews/<string:product_id>", methods=['GET', 'OPTIONS'])
+def get_reviews_for_product(product_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    try:
+        reviews = list(reviews_collection.find(
+            {"product_id": product_id, "status": "approved"}, 
+            {"_id": 0}
+        ).sort('created_at', DESCENDING))
+        return jsonify(reviews), 200
+    except Exception as e:
+        return jsonify({"message": f"Error fetching reviews: {e}"}), 500
+
+@app.route("/reviews/check_eligibility", methods=['POST', 'OPTIONS'])
+@buyer_required
+def check_review_eligibility(current_user_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    
+    data = request.get_json()
+    product_id = data.get('product_id')
+    user_id = current_user_id
+
+    if not product_id:
+        return jsonify({"message": "Product ID is required"}), 400
+
+    try:
+        purchase_check_response = requests.post(
+            f"{ORDER_SERVICE_URL}/orders/check-purchase",
+            json={"user_id": user_id, "product_id": product_id},
+            timeout=5
+        )
+        
+        if not purchase_check_response.ok:
+             return jsonify({"eligible": False, "message": "Could not verify purchase."}), 200
+
+        if not purchase_check_response.json().get('has_purchased'):
+            return jsonify({"eligible": False, "message": "You can only review products you have purchased."}), 200
+            
+    except requests.exceptions.RequestException as e:
+        return jsonify({"eligible": False, "message": f"Could not verify purchase: {e}"}), 200
+
+    try:
+        existing_review = reviews_collection.find_one({
+            "user_id": user_id,
+            "product_id": product_id
+        })
+        if existing_review:
+            return jsonify({"eligible": False, "message": "You have already reviewed this product."}), 200
+
+        return jsonify({"eligible": True, "message": ""}), 200
+    except Exception as e:
+        return jsonify({"eligible": False, "message": f"Error checking eligibility: {e}"}), 500
+
+@app.route("/reviews/submit", methods=['POST', 'OPTIONS'])
+@buyer_required
+def submit_review(current_user_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    data = request.get_json()
+    product_id = data.get('product_id')
+    rating = data.get('rating')
+    comment = data.get('comment')
+    user_id = current_user_id
+
+    if not all([product_id, rating, comment, user_id]):
+        return jsonify({"message": "Product ID, rating, comment, and user ID are required"}), 400
+
+    try:
+        purchase_check_response = requests.post(
+            f"{ORDER_SERVICE_URL}/orders/check-purchase",
+            json={"user_id": user_id, "product_id": product_id},
+            timeout=5
+        )
+        if not purchase_check_response.ok or not purchase_check_response.json().get('has_purchased'):
+            return jsonify({"message": "You can only review products you have purchased"}), 403
+    except requests.exceptions.RequestException as e:
+        return jsonify({"message": f"Could not verify purchase: {e}"}), 500
+
+    try:
+        existing_review = reviews_collection.find_one({
+            "user_id": user_id,
+            "product_id": product_id
+        })
+        if existing_review:
+            return jsonify({"message": "You have already reviewed this product"}), 409
+
+        new_review = {
+            "review_id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "product_id": product_id,
+            "rating": int(rating),
+            "comment": comment,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc)
+        }
+        reviews_collection.insert_one(new_review)
+        return jsonify({"message": "Review submitted successfully and is pending approval"}), 201
+    except Exception as e:
+        return jsonify({"message": f"Error submitting review: {e}"}), 500
 
 @app.route("/admin/reviews/pending", methods=['GET', 'OPTIONS'])
 @admin_required
 def get_pending_reviews():
     try:
         reviews = list(reviews_collection.find(
-            {'status': 'pending'},
-            {'_id': 0}
-        ).sort('created_at', DESCENDING))
+            {"status": "pending"}, 
+            {"_id": 0}
+        ).sort('created_at', ASCENDING))
         return jsonify(reviews), 200
     except Exception as e:
         return jsonify({"message": f"Error fetching pending reviews: {e}"}), 500
 
-@app.route("/admin/reviews/approve/<string:review_id>", methods=['POST', 'OPTIONS'])
+@app.route("/admin/reviews/<string:review_id>/status", methods=['PUT', 'OPTIONS'])
 @admin_required
-def approve_review(review_id):
-    try:
-        result = reviews_collection.update_one(
-            {'review_id': review_id},
-            {'$set': {'status': 'approved'}}
-        )
-        if result.matched_count == 0:
-            return jsonify({"message": "Review not found"}), 404
-        return jsonify({"message": "Review approved"}), 200
-    except Exception as e:
-        return jsonify({"message": f"Error approving review: {e}"}), 500
+def update_review_status(review_id):
+    if request.method == 'OPTIONS':
+            return jsonify({}), 200
+            
+    data = request.get_json()
+    new_status = data.get('status')
 
-@app.route("/admin/reviews/reject/<string:review_id>", methods=['POST', 'OPTIONS'])
-@admin_required
-def reject_review(review_id):
+    if new_status not in ['approved', 'rejected']:
+        return jsonify({"message": "Invalid status. Must be 'approved' or 'rejected'"}), 400
+    
     try:
         result = reviews_collection.update_one(
-            {'review_id': review_id},
-            {'$set': {'status': 'rejected'}}
+            {"review_id": review_id},
+            {"$set": {"status": new_status}}
         )
         if result.matched_count == 0:
             return jsonify({"message": "Review not found"}), 404
-        return jsonify({"message": "Review rejected"}), 200
+        return jsonify({"message": f"Review status updated to {new_status}"}), 200
     except Exception as e:
-        return jsonify({"message": f"Error rejecting review: {e}"}), 500
+        return jsonify({"message": f"Error updating review status: {e}"}), 500
+
+@app.route("/seller/reviews", methods=['POST', 'OPTIONS'])
+@seller_required
+def get_seller_reviews(current_user):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    
+    data = request.get_json()
+    product_ids = data.get('product_ids')
+    if not product_ids:
+        return jsonify([]), 200
+
+    try:
+        reviews = list(reviews_collection.find(
+            {"product_id": {"$in": product_ids}},
+            {"_id": 0}
+        ).sort('created_at', DESCENDING))
+        return jsonify(reviews), 200
+    except Exception as e:
+        return jsonify({"message": f"Error fetching seller reviews: {e}"}), 500
 
 if __name__ == '__main__':
+    reviews_collection.create_index('review_id', unique=True)
     reviews_collection.create_index('product_id')
     reviews_collection.create_index('user_id')
-    reviews_collection.create_index('review_id', unique=True)
-    reviews_collection.create_index([('user_id', 1), ('product_id', 1)], unique=True)
     reviews_collection.create_index('status')
     print("MongoDB review indexes checked/created.")
     app.run(host='0.0.0.0', port=5008, debug=True)

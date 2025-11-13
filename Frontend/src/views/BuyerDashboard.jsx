@@ -7,6 +7,7 @@ const API_URLS = {
     CART: 'http://127.0.0.1:5004',
     ORDER: 'http://127.0.0.1:5005',
     WISHLIST: 'http://127.0.0.1:5006',
+    REVIEW: 'http://127.0.0.1:5008',
 };
 
 const Toast = ({ message, type, onDismiss }) => {
@@ -15,11 +16,39 @@ const Toast = ({ message, type, onDismiss }) => {
         return () => clearTimeout(timer);
     }, [onDismiss]);
     const bgColor = type === 'error' ? 'bg-red-500' : 'bg-green-500';
-    return <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-md text-white ${bgColor} shadow-lg`}>{message}</div>;
+    return <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-md text-white ${bgColor} shadow-lg z-50`}>{message}</div>;
 };
 
-const ProductCard = ({ product, isWishlisted, onAddToCart, onToggleWishlist, stockQuantity }) => {
+const StarRating = ({ rating, count }) => {
+    const fullStars = Math.floor(rating);
+    const halfStar = rating % 1 >= 0.5 ? 1 : 0;
+    const emptyStars = 5 - fullStars - halfStar;
+    
+    if (count === 0) {
+        return <span className="text-xs text-gray-500">No reviews yet</span>;
+    }
+
+    return (
+        <div className="flex items-center">
+            {[...Array(fullStars)].map((_, i) => (
+                <svg key={`full-${i}`} className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/></svg>
+            ))}
+            {halfStar > 0 && (
+                <svg key="half" className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0v15z"/></svg>
+            )}
+            {[...Array(emptyStars)].map((_, i) => (
+                <svg key={`empty-${i}`} className="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/></svg>
+            ))}
+            {count > 0 && (
+                <span className="ml-1 text-xs text-gray-600">({count})</span>
+            )}
+        </div>
+    );
+};
+
+const ProductCard = ({ product, isWishlisted, onAddToCart, onToggleWishlist, stockQuantity, ratingData, onViewReviews }) => {
     const isOutOfStock = stockQuantity <= 0;
+    const hasReviews = ratingData && ratingData.reviewCount > 0;
 
     return (
         <div className="flex flex-col bg-white border rounded-lg shadow-lg overflow-hidden">
@@ -36,6 +65,13 @@ const ProductCard = ({ product, isWishlisted, onAddToCart, onToggleWishlist, sto
             </div>
             <div className="flex flex-col flex-grow p-4">
                 <h3 className="text-xl font-bold">{product.name}</h3>
+                <button 
+                    onClick={onViewReviews} 
+                    className="my-1 text-left cursor-pointer disabled:cursor-default" 
+                    disabled={!hasReviews}
+                >
+                    <StarRating rating={ratingData?.averageRating || 0} count={ratingData?.reviewCount || 0} />
+                </button>
                 <p className="flex-grow my-2 text-gray-600">{product.description}</p>
                 <p className="text-2xl font-bold text-blue-600">${product.price.toFixed(2)}</p>
                 <button 
@@ -60,6 +96,169 @@ const useDebounce = (value, delay) => {
     return debouncedValue;
 };
 
+const ReviewModal = ({ item, onClose, showToast }) => {
+    const [rating, setRating] = useState(0);
+    const [comment, setComment] = useState("");
+    const [isEligible, setIsEligible] = useState(false);
+    const [eligibilityChecked, setEligibilityChecked] = useState(false);
+    const [eligibilityMessage, setEligibilityMessage] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const checkEligibility = async () => {
+            try {
+                const result = await apiCall(`${API_URLS.REVIEW}/reviews/check_eligibility`, {
+                    method: 'POST',
+                    body: JSON.stringify({ product_id: item.product_id })
+                });
+                setIsEligible(result.data.eligible);
+                setEligibilityMessage(result.data.message || "");
+            } catch (error) {
+                setIsEligible(false);
+                setEligibilityMessage(error.message || "Could not check eligibility.");
+            } finally {
+                setEligibilityChecked(true);
+            }
+        };
+        checkEligibility();
+    }, [item.product_id]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (rating === 0 || comment.trim() === "") {
+            showToast("Please provide a rating and a comment.", "error");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await apiCall(`${API_URLS.REVIEW}/reviews`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    product_id: item.product_id,
+                    rating: rating,
+                    comment: comment
+                })
+            });
+            showToast("Review submitted for approval!");
+            onClose();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-xl">
+                <h2 className="text-2xl font-bold mb-4">Leave a Review for {item.name}</h2>
+                
+                {!eligibilityChecked ? (
+                    <p>Checking eligibility...</p>
+                ) : isEligible ? (
+                    <form onSubmit={handleSubmit}>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700">Your Rating</label>
+                            <div className="flex space-x-1 mt-1">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                    <button
+                                        type="button"
+                                        key={star}
+                                        onClick={() => setRating(star)}
+                                        className="focus:outline-none"
+                                    >
+                                        <svg className={`w-8 h-8 ${rating >= star ? 'text-yellow-400' : 'text-gray-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
+                                        </svg>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="mb-4">
+                            <label htmlFor="comment" className="block text-sm font-medium text-gray-700">Your Comment</label>
+                            <textarea
+                                id="comment"
+                                rows="4"
+                                value={comment}
+                                onChange={(e) => setComment(e.target.value)}
+                                className="w-full p-2 mt-1 border rounded-md"
+                                placeholder="What did you like or dislike?"
+                            ></textarea>
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                                Cancel
+                            </button>
+                            <button type="submit" disabled={isSubmitting} className="px-4 py-2 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400">
+                                {isSubmitting ? "Submitting..." : "Submit Review"}
+                            </button>
+                        </div>
+                    </form>
+                ) : (
+                    <div>
+                        <p className="text-red-600">{eligibilityMessage}</p>
+                        <button type="button" onClick={onClose} className="w-full px-4 py-2 mt-4 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                            Close
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const ViewReviewsModal = ({ productId, onClose }) => {
+    const [reviews, setReviews] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchReviews = async () => {
+            if (!productId) return;
+            setIsLoading(true);
+            try {
+                const result = await apiCall(`${API_URLS.REVIEW}/reviews/${productId}`);
+                setReviews(result.data);
+            } catch (err) {
+                setError(err.message || "Failed to load reviews.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchReviews();
+    }, [productId]);
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-xl max-h-[80vh] overflow-y-auto">
+                <h2 className="text-2xl font-bold mb-4">Product Reviews</h2>
+                {isLoading ? (
+                    <p>Loading reviews...</p>
+                ) : error ? (
+                    <p className="text-red-500">{error}</p>
+                ) : reviews.length === 0 ? (
+                    <p>No approved reviews for this product yet.</p>
+                ) : (
+                    <div className="space-y-4">
+                        {reviews.map((review) => (
+                            <div key={review.review_id} className="p-3 border rounded-md bg-gray-50">
+                                <div className="flex justify-between items-center">
+                                    <p className="font-semibold">{review.user_id}</p>
+                                    <StarRating rating={review.rating} count={-1} />
+                                </div>
+                                <p className="mt-2 text-gray-700">{review.comment}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <button type="button" onClick={onClose} className="w-full px-4 py-2 mt-6 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                    Close
+                </button>
+            </div>
+        </div>
+    );
+};
+
 export const BuyerDashboard = () => {
     const { user, logout } = useAuth();
     const [products, setProducts] = useState([]);
@@ -67,6 +266,9 @@ export const BuyerDashboard = () => {
     const [cart, setCart] = useState([]);
     const [orders, setOrders] = useState([]);
     const [inventory, setInventory] = useState({});
+    const [ratings, setRatings] = useState({});
+    const [reviewModalItem, setReviewModalItem] = useState(null);
+    const [viewingReviewsFor, setViewingReviewsFor] = useState(null);
     const [currentView, setCurrentView] = useState('shop');
     const [productDetails, setProductDetails] = useState({});
     const [toast, setToast] = useState(null);
@@ -154,6 +356,29 @@ export const BuyerDashboard = () => {
     useEffect(() => {
         if (user) fetchAllData();
     }, [user, fetchAllData]);
+    
+    useEffect(() => {
+        if (products.length > 0) {
+            const fetchAllRatings = async () => {
+                const ratingPromises = products.map(p => 
+                    apiCall(`${API_URLS.REVIEW}/reviews/average/${p.id}`)
+                );
+                const results = await Promise.allSettled(ratingPromises);
+                const ratingsMap = results.reduce((acc, result) => {
+                    if (result.status === 'fulfilled' && result.value.data) {
+                        const data = result.value.data;
+                        acc[data.product_id] = {
+                            averageRating: data.averageRating,
+                            reviewCount: data.reviewCount
+                        };
+                    }
+                    return acc;
+                }, {});
+                setRatings(ratingsMap);
+            };
+            fetchAllRatings();
+        }
+    }, [products]);
 
     const handleUpdateCart = async (productId, quantity) => {
         if (quantity > 0) {
@@ -256,7 +481,12 @@ export const BuyerDashboard = () => {
         <div className="min-h-screen bg-gray-100">
              <header className="sticky top-0 z-50 bg-white shadow-md">
                 <nav className="container flex items-center justify-between p-4 mx-auto">
-                    <h1 className="text-3xl font-bold text-gray-800">Micro-Shop</h1>
+                    <h1 
+                        className="text-3xl font-bold text-gray-800 cursor-pointer"
+                        onClick={() => setCurrentView('shop')}
+                    >
+                        Micro-Shop
+                    </h1>
                     <div className="flex items-center space-x-4">
                         <span className="hidden sm:inline">Welcome, {user.name}!</span>
                         <button onClick={() => setCurrentView('wishlist')} className="px-4 py-2 font-bold text-white bg-pink-500 rounded hover:bg-pink-700">Wishlist</button>
@@ -280,6 +510,8 @@ export const BuyerDashboard = () => {
                                 onAddToCart={() => handleUpdateCart(p.id, 1)} 
                                 onToggleWishlist={handleToggleWishlist}
                                 stockQuantity={inventory[p.id] ?? 0}
+                                ratingData={ratings[p.id]}
+                                onViewReviews={() => setViewingReviewsFor(p.id)}
                             />
                         ))}</div>
                     </div>
@@ -356,7 +588,7 @@ export const BuyerDashboard = () => {
                                 <input id="cardNum" type="text" placeholder="1234 5678 9012 3456" className="w-full p-2 mt-1 border rounded-md" />
                             </div>
                             
-                            <div classNamea="flex space-x-4">
+                            <div className="flex space-x-4">
                                 <div className="flex-1">
                                     <label htmlFor="expiry" className="block text-sm font-medium text-gray-700">Expiry Date</label>
                                     <input id="expiry" type="text" placeholder="MM / YY" className="w-full p-2 mt-1 border rounded-md" />
@@ -398,11 +630,13 @@ export const BuyerDashboard = () => {
                                     onAddToCart={() => handleUpdateCart(productId, 1)} 
                                     onToggleWishlist={handleToggleWishlist}
                                     stockQuantity={inventory[productId] ?? 0}
+                                    ratingData={ratings[productId]}
+                                    onViewReviews={() => setViewingReviewsFor(productId)}
                                 />;
                             })}
                          </div>
                          <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">Back to Shop</button>
-Z                    </div>
+                     </div>
                  )}
                   {currentView === 'orders' && (
                      <div className="p-8 bg-white rounded-lg shadow-xl">
@@ -410,9 +644,25 @@ Z                    </div>
                          <div className="space-y-4">
                          {orders.length === 0 ? <p>You have no past orders.</p> : orders.map(order => (
                               <div key={order.order_id} className="p-4 border rounded-md">
-                                 <p className="font-bold">Order ID: {order.order_id.substring(0,8)}</p>
-                                 <p>Date: {new Date(order.created_at).toLocaleDateString()}</p>
-                                 <p>Total: ${order.total_price.toFixed(2)}</p>
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="font-bold">Order ID: {order.order_id.substring(0,8)}</p>
+                                    <p className="text-sm text-gray-600">Date: {new Date(order.created_at).toLocaleDateString()}</p>
+                                </div>
+                                <p className="font-semibold">Total: ${order.total_price.toFixed(2)}</p>
+                                <div className="mt-4 space-y-2">
+                                    <h4 className="font-semibold">Items:</h4>
+                                    {order.items.map(item => (
+                                        <div key={item.product_id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                            <span>{item.name} (x{item.quantity})</span>
+                                            <button 
+                                                onClick={() => setReviewModalItem(item)}
+                                                className="px-2 py-1 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600"
+                                            >
+                                                Leave Review
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                               </div>
                          ))}
                          </div>
@@ -421,6 +671,19 @@ Z                    </div>
                  )}
             </main>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+            {reviewModalItem && (
+                <ReviewModal
+                    item={reviewModalItem}
+                    onClose={() => setReviewModalItem(null)}
+                    showToast={showToast}
+                />
+            )}
+            {viewingReviewsFor && (
+                <ViewReviewsModal
+                    productId={viewingReviewsFor}
+                    onClose={() => setViewingReviewsFor(null)}
+                />
+            )}
         </div>
     );
 };

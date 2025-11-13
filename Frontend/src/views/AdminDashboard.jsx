@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth, apiCall } from '../Auth.jsx'; 
+import { useAuth, apiCall } from '../Auth';
 
 const API_URLS = {
     USER: 'http://127.0.0.1:5001',
     PRODUCT: 'http://127.0.0.1:5002',
     INVENTORY: 'http://127.0.0.1:5003',
     ORDER: 'http://127.0.0.1:5005',
+    REVIEW: 'http://127.0.0.1:5008',
 };
 
 const StatCard = ({ title, value, icon }) => (
@@ -32,22 +33,32 @@ const Toast = ({ message, type, onDismiss }) => {
         return () => clearTimeout(timer);
     }, [onDismiss]);
     const bgColor = type === 'error' ? 'bg-red-500' : 'bg-green-500';
-    return <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-md text-white ${bgColor} shadow-lg`}>{message}</div>;
+    return <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-md text-white ${bgColor} shadow-lg z-50`}>{message}</div>;
 };
+
+const StarRating = ({ rating }) => (
+    <div className="flex items-center">
+        {[...Array(5)].map((_, i) => (
+            <svg key={i} className={`w-4 h-4 ${i < rating ? 'text-yellow-400' : 'text-gray-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
+            </svg>
+        ))}
+    </div>
+);
 
 export const AdminDashboard = () => {
     const { user, logout } = useAuth();
     
     const [view, setView] = useState('overview');
     const [users, setUsers] = useState([]);
-    const [products, setProducts] = useState([]);
+    const [allProducts, setAllProducts] = useState([]);
+    const [allInventory, setAllInventory] = useState([]);
+    const [pendingReviews, setPendingReviews] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [toast, setToast] = useState(null);
+
     const [stats, setStats] = useState({ totalRevenue: 0, totalOrders: 0 });
     const [allOrders, setAllOrders] = useState([]);
-    
-    const [inventory, setInventory] = useState([]);
-    const [updateQuantities, setUpdateQuantities] = useState({});
 
     const showToast = (message, type = 'success') => setToast({ message, type });
 
@@ -59,43 +70,23 @@ export const AdminDashboard = () => {
                 ordersResult,
                 usersResult,
                 productsResult,
-                inventoryResult 
-            ] = await Promise.all([
+                inventoryResult,
+                reviewsResult
+            ] = await Promise.allSettled([
                 apiCall(`${API_URLS.ORDER}/admin/stats`),
                 apiCall(`${API_URLS.ORDER}/admin/orders`),
                 apiCall(`${API_URLS.USER}/admin/users`),
                 apiCall(`${API_URLS.PRODUCT}/products`),
-                apiCall(`${API_URLS.INVENTORY}/admin/inventory`), 
+                apiCall(`${API_URLS.INVENTORY}/admin/inventory`),
+                apiCall(`${API_URLS.REVIEW}/admin/reviews/pending`),
             ]);
             
-            setStats(statsResult.data || { totalRevenue: 0, totalOrders: 0 });
-            setAllOrders(ordersResult.data || []);
-            setUsers(usersResult.data || []);
-            setProducts(productsResult.data || []);
-
-            const productsData = productsResult.data || [];
-            const inventoryData = inventoryResult.data || [];
-
-            const inventoryMap = inventoryData.reduce((acc, item) => {
-                acc[item.product_id] = item.quantity;
-                return acc;
-            }, {});
-
-            const combinedInventory = productsData.map(product => ({
-                id: product.id,
-                name: product.name,
-                owner_id: product.owner_id,
-                price: product.price,
-                quantity: inventoryMap[product.id] ?? 0
-            }));
-            
-            setInventory(combinedInventory);
-
-            const initialQuantities = combinedInventory.reduce((acc, item) => {
-                acc[item.id] = item.quantity;
-                return acc;
-            }, {});
-            setUpdateQuantities(initialQuantities);
+            setStats(statsResult.status === 'fulfilled' ? statsResult.value.data : { totalRevenue: 0, totalOrders: 0 });
+            setAllOrders(ordersResult.status === 'fulfilled' ? ordersResult.value.data : []);
+            setUsers(usersResult.status === 'fulfilled' ? usersResult.value.data : []);
+            setAllProducts(productsResult.status === 'fulfilled' ? productsResult.value.data : []);
+            setAllInventory(inventoryResult.status === 'fulfilled' ? inventoryResult.value.data : []);
+            setPendingReviews(reviewsResult.status === 'fulfilled' ? reviewsResult.value.data : []);
 
         } catch (error) {
             showToast(error.message, 'error');
@@ -125,24 +116,16 @@ export const AdminDashboard = () => {
         if (!window.confirm("Are you sure you want to delete this product permanently? This action cannot be undone.")) return;
         try {
             await apiCall(`${API_URLS.PRODUCT}/admin/products/${productId}`, { method: 'DELETE' });
-            setProducts(products.filter(p => p.id !== productId));
-            setInventory(inventory.filter(p => p.id !== productId));
+            setAllProducts(allProducts.filter(p => p.id !== productId));
             showToast(`Product ${productId} deleted successfully.`);
         } catch (error) {
             showToast(error.message, 'error');
         }
     };
-
-    const handleQuantityChange = (productId, value) => {
-        setUpdateQuantities(prev => ({
-            ...prev,
-            [productId]: value
-        }));
-    };
-
-    const handleInventoryUpdate = async (productId) => {
-        const newQuantity = parseInt(updateQuantities[productId], 10);
-        if (isNaN(newQuantity) || newQuantity < 0) {
+    
+    const handleStockUpdate = async (productId, newQuantity) => {
+        const quantityNum = parseInt(newQuantity, 10);
+        if (isNaN(quantityNum) || quantityNum < 0) {
             showToast("Please enter a valid, non-negative quantity.", "error");
             return;
         }
@@ -150,21 +133,53 @@ export const AdminDashboard = () => {
         try {
             await apiCall(`${API_URLS.INVENTORY}/admin/inventory/update`, {
                 method: 'POST',
-                body: JSON.stringify({ product_id: productId, quantity: newQuantity })
+                body: JSON.stringify({ product_id: productId, quantity: quantityNum }),
             });
             
-            setInventory(prev => prev.map(item => 
-                item.id === productId ? { ...item, quantity: newQuantity } : item
-            ));
-            showToast(`Stock for ${productId} updated to ${newQuantity}`);
+            setAllInventory(prevInventory => {
+                const itemExists = prevInventory.some(item => item.product_id === productId);
+                if (itemExists) {
+                    return prevInventory.map(item => 
+                        item.product_id === productId ? { ...item, quantity: quantityNum } : item
+                    );
+                } else {
+                    return [...prevInventory, { product_id: productId, quantity: quantityNum }];
+                }
+            });
+            
+            showToast(`Stock updated for ${productId}.`);
         } catch (error) {
             showToast(error.message, 'error');
-            setUpdateQuantities(prev => ({
-                ...prev,
-                [productId]: inventory.find(item => item.id === productId)?.quantity ?? 0
-            }));
         }
     };
+
+    const handleApproveReview = async (reviewId) => {
+        try {
+            await apiCall(`${API_URLS.REVIEW}/admin/reviews/approve/${reviewId}`, { method: 'POST' });
+            setPendingReviews(prev => prev.filter(r => r.review_id !== reviewId));
+            showToast("Review approved.");
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    };
+    
+    const handleRejectReview = async (reviewId) => {
+        try {
+            await apiCall(`${API_URLS.REVIEW}/admin/reviews/reject/${reviewId}`, { method: 'POST' });
+            setPendingReviews(prev => prev.filter(r => r.review_id !== reviewId));
+            showToast("Review rejected.");
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    };
+    
+    const combinedInventory = allProducts.map(product => {
+        const inventoryItem = allInventory.find(item => item.product_id === product.id);
+        return {
+            ...product,
+            quantity: inventoryItem ? inventoryItem.quantity : 0,
+        };
+    });
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -183,13 +198,16 @@ export const AdminDashboard = () => {
                         Overview
                     </button>
                     <button onClick={() => setView('users')} className={`px-4 py-2 -mb-px border-b-2 ${view === 'users' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500'}`}>
-                        User Management
+                        Users
                     </button>
                     <button onClick={() => setView('products')} className={`px-4 py-2 -mb-px border-b-2 ${view === 'products' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500'}`}>
-                        Product Management
+                        Products
                     </button>
                     <button onClick={() => setView('inventory')} className={`px-4 py-2 -mb-px border-b-2 ${view === 'inventory' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500'}`}>
                         Inventory
+                    </button>
+                    <button onClick={() => setView('reviews')} className={`px-4 py-2 -mb-px border-b-2 ${view === 'reviews' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500'}`}>
+                        Reviews
                     </button>
                 </div>
 
@@ -254,12 +272,12 @@ export const AdminDashboard = () => {
 
                         {view === 'products' && (
                             <div className="p-6 bg-white rounded-lg shadow-xl">
-                                <h2 className="text-2xl font-bold mb-4">All Products ({products.length})</h2>
+                                <h2 className="text-2xl font-bold mb-4">All Products ({allProducts.length})</h2>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">
                                         <thead><tr className="border-b bg-gray-50"><th className="p-3">ID</th><th className="p-3">Name</th><th className="p-3">Owner</th><th className="p-3">Price</th><th className="p-3">Actions</th></tr></thead>
                                         <tbody>
-                                            {products.map(p => (
+                                            {allProducts.map(p => (
                                                 <tr key={p.id} className="border-b hover:bg-gray-50">
                                                     <td className="p-3 font-mono text-sm">{p.id}</td>
                                                     <td className="p-3 font-medium">{p.name}</td>
@@ -273,42 +291,27 @@ export const AdminDashboard = () => {
                                 </div>
                             </div>
                         )}
-
+                        
                         {view === 'inventory' && (
                             <div className="p-6 bg-white rounded-lg shadow-xl">
-                                <h2 className="text-2xl font-bold mb-4">Inventory Management ({inventory.length})</h2>
+                                <h2 className="text-2xl font-bold mb-4">Inventory Management</h2>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">
-                                        <thead>
-                                            <tr className="border-b bg-gray-50">
-                                                <th className="p-3">Product ID</th>
-                                                <th className="p-3">Name</th>
-                                                <th className="p-3">Current Stock</th>
-                                                <th className="p-3">Update Stock</th>
-                                                <th className="p-3">Actions</th>
-                                            </tr>
-                                        </thead>
+                                        <thead><tr className="border-b bg-gray-50"><th className="p-3">ID</th><th className="p-3">Name</th><th className="p-3">Current Stock</th><th className="p-3">Update Stock</th></tr></thead>
                                         <tbody>
-                                            {inventory.map(item => (
-                                                <tr key={item.id} className="border-b hover:bg-gray-50">
-                                                    <td className="p-3 font-mono text-sm">{item.id}</td>
-                                                    <td className="p-3 font-medium">{item.name}</td>
-                                                    <td className="p-3">{item.quantity}</td>
+                                            {combinedInventory.map(p => (
+                                                <tr key={p.id} className="border-b hover:bg-gray-50">
+                                                    <td className="p-3 font-mono text-sm">{p.id}</td>
+                                                    <td className="p-3 font-medium">{p.name}</td>
+                                                    <td className="p-3">{p.quantity}</td>
                                                     <td className="p-3">
-                                                        <input 
-                                                            type="number" 
-                                                            value={updateQuantities[item.id] ?? 0}
-                                                            onChange={(e) => handleQuantityChange(item.id, e.target.value)}
-                                                            className="w-24 p-1 border rounded-md"
-                                                        />
-                                                    </td>
-                                                    <td className="p-3">
-                                                        <button 
-                                                            onClick={() => handleInventoryUpdate(item.id)}
-                                                            className="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                                                        >
-                                                            Update
-                                                        </button>
+                                                        <form className="flex space-x-2" onSubmit={(e) => {
+                                                            e.preventDefault();
+                                                            handleStockUpdate(p.id, e.target.elements.quantity.value);
+                                                        }}>
+                                                            <input type="number" name="quantity" defaultValue={p.quantity} className="w-20 p-1 border rounded-md" />
+                                                            <button type="submit" className="px-3 py-1 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600">Update</button>
+                                                        </form>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -317,6 +320,48 @@ export const AdminDashboard = () => {
                                 </div>
                             </div>
                         )}
+                        
+                        {view === 'reviews' && (
+                            <div className="p-6 bg-white rounded-lg shadow-xl">
+                                <h2 className="text-2xl font-bold mb-4">Pending Reviews ({pendingReviews.length})</h2>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="border-b bg-gray-50">
+                                                <th className="p-3">User</th>
+                                                <th className="p-3">Product</th>
+                                                <th className="p-3">Rating</th>
+                                                <th className="p-3">Comment</th>
+                                                <th className="p-3">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pendingReviews.map(review => {
+                                                const productName = allProducts.find(p => p.id === review.product_id)?.name || review.product_id;
+                                                return (
+                                                    <tr key={review.review_id} className="border-b hover:bg-gray-50">
+                                                        <td className="p-3 font-medium">{review.user_id}</td>
+                                                        <td className="p-3">{productName}</td>
+                                                        <td className="p-3"><StarRating rating={review.rating} /></td>
+                                                        <td className="p-3 text-sm text-gray-600">{review.comment}</td>
+                                                        <td className="p-3 flex space-x-2">
+                                                            <button onClick={() => handleApproveReview(review.review_id)} className="px-3 py-1 text-sm font-medium text-white bg-green-500 rounded-md hover:bg-green-600">
+                                                                Approve
+                                                            </button>
+                                                            <button onClick={() => handleRejectReview(review.review_id)} className="px-3 py-1 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600">
+                                                                Reject
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                    {pendingReviews.length === 0 && <p className="p-3 text-center text-gray-500">No pending reviews found.</p>}
+                                </div>
+                            </div>
+                        )}
+
                     </div>
                 )}
             </main>

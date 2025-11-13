@@ -71,3 +71,13 @@ services:
       - .:/app
     env_file:
       - .env
+
+  review_service:
+    build: .
+    command: python review_service.py
+    ports:
+      - "5008:5008"
+    volumes:
+      - .:/app
+    env_file:
+      - .env

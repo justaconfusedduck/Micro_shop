@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.pytest_cache
+```
+
+### Your New Developer Workflow
+
+Now, instead of running six separate `python` commands, your entire backend can be managed with one command.
+
+1.  **Prerequisite:** Make sure you have **Docker Desktop** installed and running on your computer.
+2.  **Start the Backend:** Open a single terminal, navigate to your `/backend` folder, and run:
+    ```bash
+    docker-compose up --build
+    ```
+    The first time you run this, it will take a few minutes to build the Docker image. Afterwards, it will be much faster. You will see the logs from all six services interleaved in this one terminal window.
+3.  **Start the Frontend:** Open a *second* terminal, navigate to your `/frontend` folder, and run the React server as usual:
+    ```bash
+    npm run dev
+    

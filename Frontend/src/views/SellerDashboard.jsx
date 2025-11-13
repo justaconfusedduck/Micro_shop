@@ -12,19 +12,19 @@ const Toast = ({ message, type, onDismiss }) => {
         const timer = setTimeout(onDismiss, 3000);
         return () => clearTimeout(timer);
     }, [onDismiss]);
-    const bgColor = type === 'error' ? 'bg-red-500' : 'bg-green-500';
+    const bgColor = type === 'error' ? 'bg-ocean-coral' : 'bg-ocean-teal';
     return <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-md text-white ${bgColor} shadow-lg z-50`}>{message}</div>;
 };
 
 const StatCard = ({ title, value, icon }) => (
-    <div className="p-6 bg-white rounded-lg shadow-lg">
+    <div className="p-6 bg-ocean-surface rounded-lg shadow-lg border border-ocean-accent/20">
         <div className="flex items-center space-x-4">
-            <div className="p-3 text-white bg-indigo-500 rounded-full">
+            <div className="p-3 text-white bg-ocean-primary rounded-full">
                 {icon}
             </div>
             <div>
-                <p className="text-sm font-medium text-gray-500 uppercase">{title}</p>
-                <p className="text-3xl font-bold text-gray-900">{value}</p>
+                <p className="text-sm font-medium text-ocean-text-muted uppercase">{title}</p>
+                <p className="text-3xl font-bold text-ocean-text">{value}</p>
             </div>
         </div>
     </div>
@@ -63,44 +63,44 @@ const EditProductModal = ({ product, onClose, onSave, showToast }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-xl">
-                <h2 className="text-2xl font-bold mb-4">Edit Product</h2>
+            <div className="w-full max-w-lg p-6 bg-ocean-surface rounded-lg shadow-xl">
+                <h2 className="text-2xl font-bold mb-4 text-ocean-primary">Edit Product</h2>
                 <form onSubmit={handleSave} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Product Name</label>
+                        <label className="block text-sm font-medium text-ocean-text">Product Name</label>
                         <input 
                             type="text" 
                             value={name} 
                             onChange={e => setName(e.target.value)} 
-                            className="w-full px-4 py-2 mt-1 border rounded-md" 
+                            className="w-full px-4 py-2 mt-1 border border-ocean-accent/50 rounded-md outline-none focus:ring-2 focus:ring-ocean-primary" 
                             required 
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Description</label>
+                        <label className="block text-sm font-medium text-ocean-text">Description</label>
                         <textarea 
                             value={description} 
                             onChange={e => setDescription(e.target.value)} 
-                            className="w-full px-4 py-2 mt-1 border rounded-md" 
+                            className="w-full px-4 py-2 mt-1 border border-ocean-accent/50 rounded-md outline-none focus:ring-2 focus:ring-ocean-primary" 
                             rows="4"
                         ></textarea>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Price</label>
+                        <label className="block text-sm font-medium text-ocean-text">Price</label>
                         <input 
                             type="number" 
                             step="0.01" 
                             value={price} 
                             onChange={e => setPrice(e.target.value)} 
-                            className="w-full px-4 py-2 mt-1 border rounded-md" 
+                            className="w-full px-4 py-2 mt-1 border border-ocean-accent/50 rounded-md outline-none focus:ring-2 focus:ring-ocean-primary" 
                             required 
                         />
                     </div>
                     <div className="flex justify-end space-x-2">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-ocean-text bg-ocean-light/50 rounded-md hover:bg-ocean-accent/30 transition-colors">
                             Cancel
                         </button>
-                        <button type="submit" disabled={isSaving} className="px-4 py-2 font-bold text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-gray-400">
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 font-bold text-white bg-ocean-primary rounded-md hover:bg-ocean-primary-hover disabled:bg-gray-400 transition-colors">
                             {isSaving ? "Saving..." : "Save Changes"}
                         </button>
                     </div>
@@ -124,10 +124,10 @@ const StarRating = ({ rating, count }) => {
                 <svg key="half" className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0v15z"/></svg>
             )}
             {[...Array(emptyStars)].map((_, i) => (
-                <svg key={`empty-${i}`} className="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/></svg>
+                <svg key={`empty-${i}`} className="w-4 h-4 text-ocean-accent" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/></svg>
             ))}
             {count > 0 && (
-                <span className="ml-1 text-xs text-gray-600">({count})</span>
+                <span className="ml-1 text-xs text-ocean-text-muted">({count})</span>
             )}
         </div>
     );
@@ -219,13 +219,13 @@ export const SellerDashboard = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-100">
-            <header className="bg-white shadow-md">
+        <div className="min-h-screen bg-ocean-light">
+            <header className="bg-ocean-surface shadow-md border-b border-ocean-accent/30">
                 <nav className="container flex items-center justify-between p-4 mx-auto">
-                    <h1 className="text-3xl font-bold text-indigo-600">Seller Dashboard</h1>
+                    <h1 className="text-3xl font-bold text-ocean-primary">Seller Dashboard</h1>
                      <div className="flex items-center space-x-4">
-                        <span>Welcome, {user.name} (Seller)</span>
-                        <button onClick={logout} className="px-4 py-2 font-bold text-white bg-red-500 rounded hover:bg-red-700">Logout</button>
+                        <span className="text-ocean-text-muted">Welcome, {user.name} (Seller)</span>
+                        <button onClick={logout} className="px-4 py-2 font-bold text-white bg-ocean-coral rounded-md hover:bg-ocean-coral-hover transition-colors">Logout</button>
                     </div>
                 </nav>
             </header>
@@ -249,11 +249,11 @@ export const SellerDashboard = () => {
                     />
                 </div>
                 
-                <div className="flex mb-6 border-b">
-                    <button onClick={() => setCurrentView('products')} className={`px-4 py-2 -mb-px border-b-2 ${currentView === 'products' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>
+                <div className="flex mb-6 border-b border-ocean-accent/30">
+                    <button onClick={() => setCurrentView('products')} className={`px-4 py-2 -mb-px border-b-2 ${currentView === 'products' ? 'border-ocean-primary text-ocean-primary' : 'border-transparent text-ocean-text-muted hover:text-ocean-text'}`}>
                         My Products
                     </button>
-                    <button onClick={() => setCurrentView('reviews')} className={`px-4 py-2 -mb-px border-b-2 ${currentView === 'reviews' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>
+                    <button onClick={() => setCurrentView('reviews')} className={`px-4 py-2 -mb-px border-b-2 ${currentView === 'reviews' ? 'border-ocean-primary text-ocean-primary' : 'border-transparent text-ocean-text-muted hover:text-ocean-text'}`}>
                         My Reviews
                     </button>
                 </div>
@@ -263,31 +263,31 @@ export const SellerDashboard = () => {
                         {currentView === 'products' && (
                             <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
                                 <div className="md:col-span-1">
-                                    <div className="p-6 bg-white rounded-lg shadow-xl">
-                                        <h2 className="text-2xl font-bold mb-4">Add a New Product</h2>
+                                    <div className="p-6 bg-ocean-surface rounded-lg shadow-xl border border-ocean-accent/20">
+                                        <h2 className="text-2xl font-bold mb-4 text-ocean-primary">Add a New Product</h2>
                                         <form onSubmit={handleAddProduct} className="space-y-4">
-                                            <input type="text" placeholder="Product Name" value={newProductName} onChange={e => setNewProductName(e.target.value)} className="w-full px-4 py-2 border rounded-md" required />
-                                            <textarea placeholder="Description" value={newProductDesc} onChange={e => setNewProductDesc(e.target.value)} className="w-full px-4 py-2 border rounded-md" rows="4"></textarea>
-                                            <input type="number" step="0.01" placeholder="Price" value={newProductPrice} onChange={e => setNewProductPrice(e.target.value)} className="w-full px-4 py-2 border rounded-md" required />
-                                            <button type="submit" className="w-full px-4 py-2 font-bold text-white bg-indigo-600 rounded hover:bg-indigo-700">Add Product</button>
+                                            <input type="text" placeholder="Product Name" value={newProductName} onChange={e => setNewProductName(e.target.value)} className="w-full px-4 py-2 border border-ocean-accent/50 rounded-md outline-none focus:ring-2 focus:ring-ocean-primary" required />
+                                            <textarea placeholder="Description" value={newProductDesc} onChange={e => setNewProductDesc(e.target.value)} className="w-full px-4 py-2 border border-ocean-accent/50 rounded-md outline-none focus:ring-2 focus:ring-ocean-primary" rows="4"></textarea>
+                                            <input type="number" step="0.01" placeholder="Price" value={newProductPrice} onChange={e => setNewProductPrice(e.target.value)} className="w-full px-4 py-2 border border-ocean-accent/50 rounded-md outline-none focus:ring-2 focus:ring-ocean-primary" required />
+                                            <button type="submit" className="w-full px-4 py-2 font-bold text-white bg-ocean-primary rounded-md hover:bg-ocean-primary-hover transition-colors">Add Product</button>
                                         </form>
                                     </div>
                                 </div>
                                 
                                 <div className="md:col-span-2">
-                                    <div className="p-6 bg-white rounded-lg shadow-xl">
-                                        <h2 className="text-2xl font-bold mb-4">Your Product Listings</h2>
+                                    <div className="p-6 bg-ocean-surface rounded-lg shadow-xl border border-ocean-accent/20">
+                                        <h2 className="text-2xl font-bold mb-4 text-ocean-primary">Your Product Listings</h2>
                                         <div className="space-y-4">
-                                            {myProducts.length === 0 ? <p>You have not listed any products yet.</p> :
+                                            {myProducts.length === 0 ? <p className="text-ocean-text-muted">You have not listed any products yet.</p> :
                                              myProducts.map(product => (
-                                                <div key={product.id} className="flex items-center justify-between p-4 border rounded-md">
+                                                <div key={product.id} className="flex items-center justify-between p-4 border border-ocean-accent/20 rounded-md">
                                                     <div>
-                                                        <p className="font-bold">{product.name}</p>
-                                                        <p className="text-sm text-gray-600">${parseFloat(product.price).toFixed(2)}</p>
+                                                        <p className="font-bold text-ocean-text">{product.name}</p>
+                                                        <p className="text-sm text-ocean-text-muted">${parseFloat(product.price).toFixed(2)}</p>
                                                     </div>
                                                     <div className="space-x-2">
-                                                        <button onClick={() => setEditingProduct(product)} className="text-sm text-blue-600 hover:underline">Edit</button>
-                                                        <button onClick={() => handleDeleteProduct(product.id)} className="text-sm text-red-600 hover:underline">Delete</button>
+                                                        <button onClick={() => setEditingProduct(product)} className="text-sm font-medium text-ocean-secondary hover:underline">Edit</button>
+                                                        <button onClick={() => handleDeleteProduct(product.id)} className="text-sm font-medium text-ocean-coral hover:underline">Delete</button>
                                                     </div>
                                                 </div>
                                              ))
@@ -299,20 +299,20 @@ export const SellerDashboard = () => {
                         )}
                         
                         {currentView === 'reviews' && (
-                            <div className="p-6 bg-white rounded-lg shadow-xl">
-                                <h2 className="text-2xl font-bold mb-4">Reviews for Your Products</h2>
+                            <div className="p-6 bg-ocean-surface rounded-lg shadow-xl border border-ocean-accent/20">
+                                <h2 className="text-2xl font-bold mb-4 text-ocean-primary">Reviews for Your Products</h2>
                                 <div className="space-y-4">
-                                    {reviews.length === 0 ? <p>You have no reviews yet.</p> :
+                                    {reviews.length === 0 ? <p className="text-ocean-text-muted">You have no reviews yet.</p> :
                                      reviews.map(review => (
-                                        <div key={review.review_id} className={`p-4 border rounded-md ${review.status === 'pending' ? 'bg-yellow-50' : 'bg-green-50'}`}>
+                                        <div key={review.review_id} className={`p-4 border rounded-md ${review.status === 'pending' ? 'bg-yellow-50 border-yellow-200' : 'bg-ocean-light/50 border-ocean-accent/30'}`}>
                                             <div className="flex justify-between items-center">
-                                                <p className="font-semibold">{myProducts.find(p => p.id === review.product_id)?.name || 'Unknown Product'}</p>
-                                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${review.status === 'pending' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}>
+                                                <p className="font-semibold text-ocean-text">{myProducts.find(p => p.id === review.product_id)?.name || 'Unknown Product'}</p>
+                                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${review.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-ocean-teal/20 text-ocean-teal-dark'}`}>
                                                     {review.status}
                                                 </span>
                                             </div>
                                             <StarRating rating={review.rating} count={-1} />
-                                            <p className="mt-2 text-gray-700">{review.comment}</p>
+                                            <p className="mt-2 text-ocean-text-muted">{review.comment}</p>
                                         </div>
                                      ))
                                     }

@@ -15,7 +15,7 @@ const Toast = ({ message, type, onDismiss }) => {
         const timer = setTimeout(onDismiss, 3000);
         return () => clearTimeout(timer);
     }, [onDismiss]);
-    const bgColor = type === 'error' ? 'bg-red-500' : 'bg-green-500';
+    const bgColor = type === 'error' ? 'bg-ocean-coral' : 'bg-ocean-secondary';
     return <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-md text-white ${bgColor} shadow-lg z-50`}>{message}</div>;
 };
 
@@ -25,7 +25,7 @@ const StarRating = ({ rating, count }) => {
     const emptyStars = 5 - fullStars - halfStar;
     
     if (count === 0) {
-        return <span className="text-xs text-gray-500">No reviews yet</span>;
+        return <span className="text-xs text-ocean-text-muted">No reviews yet</span>;
     }
 
     return (
@@ -37,10 +37,10 @@ const StarRating = ({ rating, count }) => {
                 <svg key="half" className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0v15z"/></svg>
             )}
             {[...Array(emptyStars)].map((_, i) => (
-                <svg key={`empty-${i}`} className="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/></svg>
+                <svg key={`empty-${i}`} className="w-4 h-4 text-ocean-accent" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/></svg>
             ))}
             {count > 0 && (
-                <span className="ml-1 text-xs text-gray-600">({count})</span>
+                <span className="ml-1 text-xs text-ocean-text-muted">({count})</span>
             )}
         </div>
     );
@@ -51,20 +51,20 @@ const ProductCard = ({ product, isWishlisted, onAddToCart, onToggleWishlist, sto
     const hasReviews = ratingData && ratingData.reviewCount > 0;
 
     return (
-        <div className="flex flex-col bg-white border rounded-lg shadow-lg overflow-hidden">
+        <div className="flex flex-col bg-ocean-surface border border-ocean-accent/30 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
             <div className="relative">
                 {isOutOfStock && (
-                    <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md z-10">
+                    <div className="absolute top-2 left-2 bg-ocean-coral text-white text-xs font-bold px-2 py-1 rounded-md z-10">
                         OUT OF STOCK
                     </div>
                 )}
-                <img src={`https://placehold.co/400x300/E2E8F0/334155?text=${product.name.replace(/\s/g, '+')}`} alt={product.name} className="object-cover w-full h-48" />
-                <button onClick={() => onToggleWishlist(product.id, isWishlisted)} className={`absolute top-2 right-2 p-2 rounded-full ${isWishlisted ? 'text-red-500 bg-red-100' : 'text-gray-500 bg-white'}`}>
+                <img src={`https://placehold.co/400x300/bbe1fa/1b262c?text=${product.name.replace(/\s/g, '+')}`} alt={product.name} className="object-cover w-full h-48" />
+                <button onClick={() => onToggleWishlist(product.id, isWishlisted)} className={`absolute top-2 right-2 p-2 rounded-full transition-colors ${isWishlisted ? 'text-ocean-coral bg-red-50' : 'text-ocean-text-muted bg-white/90 hover:text-ocean-coral'}`}>
                     <svg className="w-6 h-6" fill={isWishlisted ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.5l1.318-1.182a4.5 4.5 0 116.364 6.364L12 18.75l-7.682-7.682a4.5 4.5 0 010-6.364z"></path></svg>
                 </button>
             </div>
             <div className="flex flex-col flex-grow p-4">
-                <h3 className="text-xl font-bold">{product.name}</h3>
+                <h3 className="text-xl font-bold text-ocean-primary">{product.name}</h3>
                 <button 
                     onClick={onViewReviews} 
                     className="my-1 text-left cursor-pointer disabled:cursor-default" 
@@ -72,11 +72,11 @@ const ProductCard = ({ product, isWishlisted, onAddToCart, onToggleWishlist, sto
                 >
                     <StarRating rating={ratingData?.averageRating || 0} count={ratingData?.reviewCount || 0} />
                 </button>
-                <p className="flex-grow my-2 text-gray-600">{product.description}</p>
-                <p className="text-2xl font-bold text-blue-600">${product.price.toFixed(2)}</p>
+                <p className="flex-grow my-2 text-ocean-text-muted">{product.description}</p>
+                <p className="text-2xl font-bold text-ocean-secondary">${product.price.toFixed(2)}</p>
                 <button 
                     onClick={() => onAddToCart(product.id)} 
-                    className="w-full px-4 py-2 mt-4 font-bold text-white bg-blue-500 rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="w-full px-4 py-2 mt-4 font-bold text-white bg-ocean-secondary rounded-md hover:bg-ocean-secondary-hover disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                     disabled={isOutOfStock}
                 >
                     {isOutOfStock ? "Out of Stock" : "Add to Cart"}
@@ -150,15 +150,15 @@ const ReviewModal = ({ item, onClose, showToast }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-xl">
-                <h2 className="text-2xl font-bold mb-4">Leave a Review for {item.name}</h2>
+            <div className="w-full max-w-lg p-6 bg-ocean-surface rounded-lg shadow-xl">
+                <h2 className="text-2xl font-bold mb-4 text-ocean-primary">Leave a Review for {item.name}</h2>
                 
                 {!eligibilityChecked ? (
                     <p>Checking eligibility...</p>
                 ) : isEligible ? (
                     <form onSubmit={handleSubmit}>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Your Rating</label>
+                            <label className="block text-sm font-medium text-ocean-text">Your Rating</label>
                             <div className="flex space-x-1 mt-1">
                                 {[1, 2, 3, 4, 5].map((star) => (
                                     <button
@@ -167,7 +167,7 @@ const ReviewModal = ({ item, onClose, showToast }) => {
                                         onClick={() => setRating(star)}
                                         className="focus:outline-none"
                                     >
-                                        <svg className={`w-8 h-8 ${rating >= star ? 'text-yellow-400' : 'text-gray-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                                        <svg className={`w-8 h-8 ${rating >= star ? 'text-yellow-400' : 'text-ocean-accent'}`} fill="currentColor" viewBox="0 0 20 20">
                                             <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
                                         </svg>
                                     </button>
@@ -175,29 +175,29 @@ const ReviewModal = ({ item, onClose, showToast }) => {
                             </div>
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="comment" className="block text-sm font-medium text-gray-700">Your Comment</label>
+                            <label htmlFor="comment" className="block text-sm font-medium text-ocean-text">Your Comment</label>
                             <textarea
                                 id="comment"
                                 rows="4"
                                 value={comment}
                                 onChange={(e) => setComment(e.target.value)}
-                                className="w-full p-2 mt-1 border rounded-md"
+                                className="w-full p-2 mt-1 border border-ocean-accent/50 rounded-md outline-none focus:ring-2 focus:ring-ocean-secondary"
                                 placeholder="What did you like or dislike?"
                             ></textarea>
                         </div>
                         <div className="flex justify-end space-x-2">
-                            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                            <button type="button" onClick={onClose} className="px-4 py-2 text-ocean-text bg-ocean-light/50 rounded-md hover:bg-ocean-accent/30 transition-colors">
                                 Cancel
                             </button>
-                            <button type="submit" disabled={isSubmitting} className="px-4 py-2 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400">
+                            <button type="submit" disabled={isSubmitting} className="px-4 py-2 font-bold text-white bg-ocean-secondary rounded-md hover:bg-ocean-secondary-hover disabled:bg-gray-400 transition-colors">
                                 {isSubmitting ? "Submitting..." : "Submit Review"}
                             </button>
                         </div>
                     </form>
                 ) : (
                     <div>
-                        <p className="text-red-600">{eligibilityMessage}</p>
-                        <button type="button" onClick={onClose} className="w-full px-4 py-2 mt-4 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                        <p className="text-ocean-coral">{eligibilityMessage}</p>
+                        <button type="button" onClick={onClose} className="w-full px-4 py-2 mt-4 text-ocean-text bg-ocean-light/50 rounded-md hover:bg-ocean-accent/30 transition-colors">
                             Close
                         </button>
                     </div>
@@ -230,28 +230,28 @@ const ViewReviewsModal = ({ productId, onClose }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-xl max-h-[80vh] overflow-y-auto">
-                <h2 className="text-2xl font-bold mb-4">Product Reviews</h2>
+            <div className="w-full max-w-lg p-6 bg-ocean-surface rounded-lg shadow-xl max-h-[80vh] overflow-y-auto">
+                <h2 className="text-2xl font-bold mb-4 text-ocean-primary">Product Reviews</h2>
                 {isLoading ? (
                     <p>Loading reviews...</p>
                 ) : error ? (
-                    <p className="text-red-500">{error}</p>
+                    <p className="text-ocean-coral">{error}</p>
                 ) : reviews.length === 0 ? (
                     <p>No approved reviews for this product yet.</p>
                 ) : (
                     <div className="space-y-4">
                         {reviews.map((review) => (
-                            <div key={review.review_id} className="p-3 border rounded-md bg-gray-50">
+                            <div key={review.review_id} className="p-3 border border-ocean-accent/20 rounded-md bg-ocean-light/50">
                                 <div className="flex justify-between items-center">
-                                    <p className="font-semibold">{review.user_id}</p>
+                                    <p className="font-semibold text-ocean-primary">{review.user_id}</p>
                                     <StarRating rating={review.rating} count={-1} />
                                 </div>
-                                <p className="mt-2 text-gray-700">{review.comment}</p>
+                                <p className="mt-2 text-ocean-text">{review.comment}</p>
                             </div>
                         ))}
                     </div>
                 )}
-                <button type="button" onClick={onClose} className="w-full px-4 py-2 mt-6 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                <button type="button" onClick={onClose} className="w-full px-4 py-2 mt-6 text-ocean-text bg-ocean-light/50 rounded-md hover:bg-ocean-accent/30 transition-colors">
                     Close
                 </button>
             </div>
@@ -478,30 +478,30 @@ export const BuyerDashboard = () => {
     }, [currentView, cart, wishlist, ensureProductDetails]);
 
     return (
-        <div className="min-h-screen bg-gray-100">
-             <header className="sticky top-0 z-50 bg-white shadow-md">
+        <div className="min-h-screen bg-ocean-light">
+             <header className="sticky top-0 z-50 bg-ocean-primary shadow-md">
                 <nav className="container flex items-center justify-between p-4 mx-auto">
                     <h1 
-                        className="text-3xl font-bold text-gray-800 cursor-pointer"
+                        className="text-3xl font-bold text-white cursor-pointer flex items-center gap-2"
                         onClick={() => setCurrentView('shop')}
                     >
-                        Micro-Shop
+                        <span>🌊</span> Micro-Shop
                     </h1>
                     <div className="flex items-center space-x-4">
-                        <span className="hidden sm:inline">Welcome, {user.name}!</span>
-                        <button onClick={() => setCurrentView('wishlist')} className="px-4 py-2 font-bold text-white bg-pink-500 rounded hover:bg-pink-700">Wishlist</button>
-                        <button onClick={() => setCurrentView('cart')} className="relative px-4 py-2 font-bold text-white bg-blue-500 rounded hover:bg-blue-700">
-                            Cart <span className="absolute top-0 right-0 px-2 py-1 text-xs font-bold text-white bg-red-500 rounded-full -mt-2 -mr-2">{cartCount}</span>
+                        <span className="hidden sm:inline text-ocean-accent">Welcome, {user.name}!</span>
+                        <button onClick={() => setCurrentView('wishlist')} className="px-4 py-2 font-bold text-white bg-ocean-coral rounded-md hover:bg-ocean-coral-hover transition-colors">Wishlist</button>
+                        <button onClick={() => setCurrentView('cart')} className="relative px-4 py-2 font-bold text-white bg-ocean-secondary rounded-md hover:bg-ocean-secondary-hover transition-colors">
+                            Cart <span className="absolute top-0 right-0 px-2 py-1 text-xs font-bold text-ocean-primary bg-ocean-accent rounded-full -mt-2 -mr-2">{cartCount}</span>
                         </button>
-                        <button onClick={handleViewOrders} className="px-4 py-2 font-bold text-white bg-green-500 rounded hover:bg-green-700">Orders</button>
-                        <button onClick={logout} className="px-4 py-2 font-bold text-white bg-red-500 rounded hover:bg-red-700">Logout</button>
+                        <button onClick={handleViewOrders} className="px-4 py-2 font-bold text-white border border-ocean-accent rounded-md hover:bg-ocean-secondary transition-colors">Orders</button>
+                        <button onClick={logout} className="px-4 py-2 font-bold text-white bg-transparent border border-ocean-coral text-ocean-coral rounded-md hover:bg-ocean-coral hover:text-white transition-colors">Logout</button>
                     </div>
                 </nav>
             </header>
             <main className="container p-4 mx-auto">
                  {currentView === 'shop' && (
                     <div>
-                        <div className="mb-6"><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search for products..." className="w-full p-3 border rounded-lg shadow-sm" /></div>
+                        <div className="mb-6"><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search for products..." className="w-full p-3 border border-ocean-accent/50 rounded-lg shadow-sm focus:ring-2 focus:ring-ocean-secondary outline-none" /></div>
                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">{products.map(p => (
                             <ProductCard 
                                 key={p.id} 
@@ -517,12 +517,12 @@ export const BuyerDashboard = () => {
                     </div>
                  )}
                  {currentView === 'cart' && (
-                    <div className="p-8 bg-white rounded-lg shadow-xl">
-                        <h2 className="text-3xl font-bold mb-6">Your Cart</h2>
+                    <div className="p-8 bg-ocean-surface rounded-lg shadow-xl border border-ocean-accent/20">
+                        <h2 className="text-3xl font-bold mb-6 text-ocean-primary">Your Cart</h2>
                         {cart.length === 0 ? <p>Your cart is empty.</p> : (
                             <div>
                                 {invalidCartItems.length > 0 && (
-                                    <div className="p-3 my-4 text-sm text-center text-red-800 bg-red-100 rounded-md">
+                                    <div className="p-3 my-4 text-sm text-center text-white bg-ocean-coral rounded-md">
                                         Some items in your cart are out of stock or have limited availability:
                                         <ul className="font-medium list-disc list-inside">
                                             {invalidCartItems.map(item => {
@@ -537,27 +537,27 @@ export const BuyerDashboard = () => {
                                     const product = productDetails[item.product_id];
                                     const stock = inventory[item.product_id] ?? 0;
                                     const isItemInvalid = item.quantity > stock;
-                                    if (!product) return <div key={item.product_id} className="py-4 border-b">Loading item...</div>;
+                                    if (!product) return <div key={item.product_id} className="py-4 border-b border-ocean-accent/20">Loading item...</div>;
                                     return (
-                                        <div key={item.product_id} className={`flex justify-between items-center py-4 border-b ${isItemInvalid ? 'bg-red-50' : ''}`}>
-                                            <div><p className="font-semibold">{product.name}</p><p className="text-gray-600">${product.price.toFixed(2)} each</p></div>
+                                        <div key={item.product_id} className={`flex justify-between items-center py-4 border-b border-ocean-accent/20 ${isItemInvalid ? 'bg-red-50' : ''}`}>
+                                            <div><p className="font-semibold text-ocean-primary">{product.name}</p><p className="text-ocean-text-muted">${product.price.toFixed(2)} each</p></div>
                                             <div className="flex items-center space-x-3">
-                                                <button onClick={() => handleUpdateCart(item.product_id, -1)} className="px-2 py-1 border rounded">-</button>
-                                                <span>{item.quantity}</span>
-                                                <button onClick={() => handleUpdateCart(item.product_id, 1)} className="px-2 py-1 border rounded" disabled={item.quantity >= stock}>+</button>
+                                                <button onClick={() => handleUpdateCart(item.product_id, -1)} className="px-2 py-1 border border-ocean-secondary text-ocean-secondary rounded-md hover:bg-ocean-light transition-colors">-</button>
+                                                <span className="font-bold">{item.quantity}</span>
+                                                <button onClick={() => handleUpdateCart(item.product_id, 1)} className="px-2 py-1 border border-ocean-secondary text-ocean-secondary rounded-md hover:bg-ocean-light transition-colors" disabled={item.quantity >= stock}>+</button>
                                             </div>
-                                            <span className="font-semibold">${(product.price * item.quantity).toFixed(2)}</span>
+                                            <span className="font-bold text-ocean-secondary">${(product.price * item.quantity).toFixed(2)}</span>
                                         </div>
                                     );
                                 })}
                                 <div className="text-right mt-6">
-                                    <p className="text-2xl font-bold">Total: ${cartTotal.toFixed(2)}</p>
+                                    <p className="text-2xl font-bold text-ocean-primary">Total: ${cartTotal.toFixed(2)}</p>
                                     <button 
                                         onClick={() => {
                                             setPaymentError(null);
                                             setCurrentView('payment');
                                         }} 
-                                        className="px-6 py-3 mt-4 font-bold text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                        className="px-6 py-3 mt-4 font-bold text-white bg-ocean-primary rounded-md hover:bg-ocean-primary-hover disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                                         disabled={!isCartValid}
                                     >
                                         Proceed to Checkout
@@ -565,52 +565,52 @@ export const BuyerDashboard = () => {
                                 </div>
                             </div>
                         )}
-                        <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">Back to Shop</button>
+                        <button onClick={() => setCurrentView('shop')} className="mt-6 text-ocean-secondary hover:underline">Back to Shop</button>
                     </div>
                  )}
                  
                  {currentView === 'payment' && (
-                    <div className="max-w-lg p-8 mx-auto bg-white rounded-lg shadow-xl">
-                        <h2 className="mb-6 text-3xl font-bold text-center">Complete Your Payment</h2>
+                    <div className="max-w-lg p-8 mx-auto bg-ocean-surface rounded-lg shadow-xl border border-ocean-accent/30">
+                        <h2 className="mb-6 text-3xl font-bold text-center text-ocean-primary">Complete Your Payment</h2>
                         
-                        <div className="p-4 mb-4 text-center bg-gray-100 rounded-lg">
-                            <p className="text-lg text-gray-600">Order Total</p>
-                            <p className="text-4xl font-bold text-gray-900">${cartTotal.toFixed(2)}</p>
+                        <div className="p-4 mb-4 text-center bg-ocean-light rounded-lg border border-ocean-accent/20">
+                            <p className="text-lg text-ocean-text-muted">Order Total</p>
+                            <p className="text-4xl font-bold text-ocean-primary">${cartTotal.toFixed(2)}</p>
                         </div>
                         
-                        <p className="mb-4 text-sm text-center text-gray-500">
+                        <p className="mb-4 text-sm text-center text-ocean-text-muted">
                             (This is a mock payment form. The backend will randomly succeed or fail.)
                         </p>
 
                         <form onSubmit={handlePaymentSubmit} className="space-y-4">
                             <div>
-                                <label htmlFor="cardNum" className="block text-sm font-medium text-gray-700">Card Number</label>
-                                <input id="cardNum" type="text" placeholder="1234 5678 9012 3456" className="w-full p-2 mt-1 border rounded-md" />
+                                <label htmlFor="cardNum" className="block text-sm font-medium text-ocean-text">Card Number</label>
+                                <input id="cardNum" type="text" placeholder="1234 5678 9012 3456" className="w-full p-2 mt-1 border border-ocean-accent/50 rounded-md focus:ring-2 focus:ring-ocean-secondary outline-none" />
                             </div>
                             
                             <div className="flex space-x-4">
                                 <div className="flex-1">
-                                    <label htmlFor="expiry" className="block text-sm font-medium text-gray-700">Expiry Date</label>
-                                    <input id="expiry" type="text" placeholder="MM / YY" className="w-full p-2 mt-1 border rounded-md" />
+                                    <label htmlFor="expiry" className="block text-sm font-medium text-ocean-text">Expiry Date</label>
+                                    <input id="expiry" type="text" placeholder="MM / YY" className="w-full p-2 mt-1 border border-ocean-accent/50 rounded-md focus:ring-2 focus:ring-ocean-secondary outline-none" />
                                 </div>
                                 <div className="flex-1">
-                                    <label htmlFor="cvc" className="block text-sm font-medium text-gray-700">CVC</label>
-                                    <input id="cvc" type="text" placeholder="123" className="w-full p-2 mt-1 border rounded-md" />
+                                    <label htmlFor="cvc" className="block text-sm font-medium text-ocean-text">CVC</label>
+                                    <input id="cvc" type="text" placeholder="123" className="w-full p-2 mt-1 border border-ocean-accent/50 rounded-md focus:ring-2 focus:ring-ocean-secondary outline-none" />
                                 </div>
                             </div>
                             
                             {paymentError && (
-                                <div className="p-3 text-sm text-center text-red-800 bg-red-100 rounded-md">
+                                <div className="p-3 text-sm text-center text-white bg-ocean-coral rounded-md">
                                     {paymentError}
                                 </div>
                             )}
 
-                            <button type="submit" disabled={isLoading} className="w-full px-6 py-3 font-bold text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-gray-400">
+                            <button type="submit" disabled={isLoading} className="w-full px-6 py-3 font-bold text-white bg-ocean-teal rounded-md hover:bg-ocean-teal-dark disabled:bg-gray-400 transition-colors">
                                 {isLoading ? 'Processing Payment...' : `Pay $${cartTotal.toFixed(2)}`}
                             </button>
                         </form>
 
-                        <button onClick={() => setCurrentView('cart')} className="w-full mt-4 text-center text-blue-600 hover:underline">
+                        <button onClick={() => setCurrentView('cart')} className="w-full mt-4 text-center text-ocean-secondary hover:underline">
                             Back to Cart
                         </button>
                     </div>
@@ -618,11 +618,11 @@ export const BuyerDashboard = () => {
                  
                  {currentView === 'wishlist' && (
                      <div className="p-8">
-                        <h2 className="text-3xl font-bold mb-6">Your Wishlist</h2>
+                        <h2 className="text-3xl font-bold mb-6 text-ocean-primary">Your Wishlist</h2>
                          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                            {wishlist.length === 0 ? <p className="col-span-full text-center">Your wishlist is empty.</p> : wishlist.map(productId => {
+                            {wishlist.length === 0 ? <p className="col-span-full text-center text-ocean-text-muted">Your wishlist is empty.</p> : wishlist.map(productId => {
                                 const product = productDetails[productId];
-                                if (!product) return <div key={productId} className="p-4 text-center bg-white rounded-lg shadow">Loading...</div>;
+                                if (!product) return <div key={productId} className="p-4 text-center bg-ocean-surface rounded-lg shadow border border-ocean-accent/20">Loading...</div>;
                                 return <ProductCard 
                                     key={productId} 
                                     product={product} 
@@ -635,28 +635,28 @@ export const BuyerDashboard = () => {
                                 />;
                             })}
                          </div>
-                         <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">Back to Shop</button>
+                         <button onClick={() => setCurrentView('shop')} className="mt-6 text-ocean-secondary hover:underline">Back to Shop</button>
                      </div>
                  )}
                   {currentView === 'orders' && (
-                     <div className="p-8 bg-white rounded-lg shadow-xl">
-                         <h2 className="text-3xl font-bold mb-6">Your Orders</h2>
+                     <div className="p-8 bg-ocean-surface rounded-lg shadow-xl border border-ocean-accent/20">
+                         <h2 className="text-3xl font-bold mb-6 text-ocean-primary">Your Orders</h2>
                          <div className="space-y-4">
                          {orders.length === 0 ? <p>You have no past orders.</p> : orders.map(order => (
-                              <div key={order.order_id} className="p-4 border rounded-md">
+                              <div key={order.order_id} className="p-4 border border-ocean-accent/20 rounded-md">
                                 <div className="flex justify-between items-center mb-2">
-                                    <p className="font-bold">Order ID: {order.order_id.substring(0,8)}</p>
-                                    <p className="text-sm text-gray-600">Date: {new Date(order.created_at).toLocaleDateString()}</p>
+                                    <p className="font-bold text-ocean-text">Order ID: <span className="font-mono text-ocean-secondary">{order.order_id.substring(0,8)}...</span></p>
+                                    <p className="text-sm text-ocean-text-muted">Date: {new Date(order.created_at).toLocaleDateString()}</p>
                                 </div>
-                                <p className="font-semibold">Total: ${order.total_price.toFixed(2)}</p>
+                                <p className="font-semibold text-ocean-text">Total: <span className="font-bold text-ocean-secondary">${order.total_price.toFixed(2)}</span></p>
                                 <div className="mt-4 space-y-2">
-                                    <h4 className="font-semibold">Items:</h4>
+                                    <h4 className="font-semibold text-ocean-text">Items:</h4>
                                     {order.items.map(item => (
-                                        <div key={item.product_id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                                            <span>{item.name} (x{item.quantity})</span>
+                                        <div key={item.product_id} className="flex justify-between items-center p-2 bg-ocean-light/50 rounded">
+                                            <span className="text-ocean-text-muted">{item.name} (x{item.quantity})</span>
                                             <button 
                                                 onClick={() => setReviewModalItem(item)}
-                                                className="px-2 py-1 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600"
+                                                className="px-2 py-1 text-sm font-medium text-white bg-ocean-secondary rounded-md hover:bg-ocean-secondary-hover"
                                             >
                                                 Leave Review
                                             </button>
@@ -666,7 +666,7 @@ export const BuyerDashboard = () => {
                               </div>
                          ))}
                          </div>
-                          <button onClick={() => setCurrentView('shop')} className="mt-6 text-blue-600 hover:underline">Back to Shop</button>
+                          <button onClick={() => setCurrentView('shop')} className="mt-6 text-ocean-secondary hover:underline">Back to Shop</button>
                      </div>
                  )}
             </main>

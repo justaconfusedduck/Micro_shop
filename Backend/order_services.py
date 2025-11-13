@@ -13,7 +13,7 @@ from functools import wraps
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173","http://192.168.1.*","http://172.31.30.*"])
 
 PRODUCT_SERVICE_URL = "http://product_service:5002"
 INVENTORY_SERVICE_URL = "http://inventory_service:5003"
@@ -166,12 +166,17 @@ def create_order(current_user_id):
 
     return jsonify({"message": "Order placed successfully", "order_id": new_order['order_id']}), 201
 
-
 @app.route("/orders/<string:user_id>", methods=['GET', 'OPTIONS'])
-def get_orders_for_user(user_id):
+@buyer_required
+def get_orders_for_user(user_id, **kwargs):
     if request.method == 'OPTIONS':
         return jsonify({}), 200
         
+    token_user_id = kwargs.get('current_user_id')
+    
+    if token_user_id != user_id:
+        return jsonify({"message": "Forbidden: You are not authorized to view these orders"}), 403
+    
     orders = list(orders_collection.find({'user_id': user_id}, {'_id': 0}).sort('created_at', -1))
     return jsonify(orders)
 

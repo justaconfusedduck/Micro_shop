@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth, apiCall } from '../Auth.jsx';
 
 const API_URLS = {
-    PRODUCT: 'http://127.0.0.1:5002',
-    ORDER: 'http://127.0.0.1:5005',
-    REVIEW: 'http://127.0.0.1:5008',
+    PRODUCT: 'http://172.31.30.53:5002',
+    ORDER: 'http://172.31.30.53:5005',
+    REVIEW: 'http://172.31.30.53:5008',
 };
 
 const Toast = ({ message, type, onDismiss }) => {

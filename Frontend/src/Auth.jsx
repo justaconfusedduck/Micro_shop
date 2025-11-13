@@ -64,6 +64,14 @@ export const apiCall = async (url, options = {}, suppressErrors = false) => {
             options.headers['Authorization'] = `Bearer ${access_token}`;
             response = await fetch(url, options);
         }
+
+        // --- THIS IS THE FIX ---
+        // Check for 429 Too Many Requests *before* the generic !response.ok
+        if (response.status === 429) {
+            // Throw a user-friendly message, as requested.
+            throw new Error("Too many login attempts. Please try again in a few minutes.");
+        }
+        // --- END OF FIX ---
         
         if (response.status === 206) {
             return { status: 206, data: await response.json() };
@@ -160,6 +168,7 @@ const AuthPage = () => {
                 login(result.data.username, result.data.access_token); 
             }
         } catch (err) { 
+            // This setError will now show the new "Too many requests" message.
             setError(err.message); 
             if (isCaptchaEnabled) {
                 fetchCaptcha(); 

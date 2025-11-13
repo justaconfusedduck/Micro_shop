@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth, apiCall } from '../Auth';
 
 const API_URLS = {
-    PRODUCT: 'http://127.0.0.1:5002',
-    INVENTORY: 'http://127.0.0.1:5003',
-    CART: 'http://127.0.0.1:5004',
-    ORDER: 'http://127.0.0.1:5005',
-    WISHLIST: 'http://127.0.0.1:5006',
-    REVIEW: 'http://127.0.0.1:5008',
+    PRODUCT: 'http://172.31.30.53:5002',
+    INVENTORY: 'http://172.31.30.53:5003',
+    CART: 'http://172.31.30.53:5004',
+    ORDER: 'http://172.31.30.53:5005',
+    WISHLIST: 'http://172.31.30.53:5006',
+    REVIEW: 'http://172.31.30.53:5008',
 };
 
 const Toast = ({ message, type, onDismiss }) => {

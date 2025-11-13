@@ -45,7 +45,7 @@ if OTP_ENABLED and not all([MAILGUN_API_KEY, MAILGUN_DOMAIN, EMAIL_SENDER]):
 
 # Flask App Initialization
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173","http://192.168.1.*","http://172.31.30.*"])
 
 # Extension Initialization
 limiter = Limiter(get_remote_address, app=app, default_limits=["200/day", "50/hour"], storage_uri="memory://")

@@ -10,7 +10,7 @@ load_dotenv() # <-- 2. LOAD THE .ENV FILE
 
 # 1. --- SETUP ---
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["null", "http://127.0.0.1:8080", "http://localhost:5173"])
+CORS(app, supports_credentials=True, origins=["null", "http://127.0.0.1:8080", "http://localhost:5173","http://192.168.1.*","http://172.31.30.*"])
 
 # --- MONGODB ATLAS CONNECTION ---
 # 3. READ THE DATABASE URI FROM THE ENVIRONMENT

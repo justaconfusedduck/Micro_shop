@@ -6,11 +6,11 @@ import {
 } from 'recharts';
 
 const API_URLS = {
-    USER: 'http://127.0.0.1:5001',
-    PRODUCT: 'http://127.0.0.1:5002',
-    INVENTORY: 'http://127.0.0.1:5003',
-    ORDER: 'http://127.0.0.1:5005',
-    REVIEW: 'http://127.0.0.1:5008',
+    USER: 'http://172.31.30.53:5001',
+    PRODUCT: 'http://172.31.30.53:5002',
+    INVENTORY: 'http://172.31.30.53:5003',
+    ORDER: 'http://172.31.30.53:5005',
+    REVIEW: 'http://172.31.30.53:5008',
 };
 
 const StatCard = ({ title, value, icon }) => (

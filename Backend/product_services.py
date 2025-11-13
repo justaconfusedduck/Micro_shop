@@ -15,7 +15,7 @@ load_dotenv()
 # 1. --- SETUP ---
 app = Flask(__name__)
 # Updated CORS origins to match your other services
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173","http://192.168.1.*","http://172.31.30.*"])
 
 MONGO_URI = os.environ.get('PRODUCT_DB_URI')
 SECRET_KEY = os.environ.get('SECRET_KEY') # Needed to decode JWTs

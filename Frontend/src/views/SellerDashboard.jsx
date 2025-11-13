@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth, apiCall } from '../Auth';
 
+// --- API CONFIGURATION ---
 const API_URLS = {
     PRODUCT: 'http://127.0.0.1:5002',
 };
 
+// --- SHARED COMPONENTS ---
 const Toast = ({ message, type, onDismiss }) => {
     useEffect(() => {
         const timer = setTimeout(onDismiss, 3000);
@@ -18,12 +20,14 @@ const Toast = ({ message, type, onDismiss }) => {
     );
 };
 
+// --- SELLER DASHBOARD ---
 export const SellerDashboard = () => {
     const { user, logout } = useAuth();
     const [myProducts, setMyProducts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [toast, setToast] = useState(null);
 
+    // State for the "Add Product" form
     const [newProductName, setNewProductName] = useState('');
     const [newProductDesc, setNewProductDesc] = useState('');
     const [newProductPrice, setNewProductPrice] = useState('');
@@ -33,8 +37,9 @@ export const SellerDashboard = () => {
     const fetchMyProducts = useCallback(async () => {
         setIsLoading(true);
         try {
+            // **THE FIX IS HERE**: We now extract the '.data' property from the result.
             const result = await apiCall(`${API_URLS.PRODUCT}/products`);
-            const allProducts = result.data || []; 
+            const allProducts = result.data || []; // Use .data and provide a fallback
             setMyProducts(allProducts.filter(p => p.owner_id === user.name));
         } catch (error) {
             showToast(error.message, 'error');
@@ -50,6 +55,7 @@ export const SellerDashboard = () => {
     const handleAddProduct = async (e) => {
         e.preventDefault();
         try {
+            // **THE FIX IS HERE**: We destructure 'data' from the result object.
             const { data: newProduct } = await apiCall(`${API_URLS.PRODUCT}/products`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -60,6 +66,7 @@ export const SellerDashboard = () => {
             });
             setMyProducts(prev => [...prev, newProduct]);
             showToast("Product created successfully!");
+            // Reset form
             setNewProductName('');
             setNewProductDesc('');
             setNewProductPrice('');

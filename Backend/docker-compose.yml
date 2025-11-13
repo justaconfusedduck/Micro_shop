@@ -61,3 +61,13 @@ services:
       - .:/app
     env_file:
       - .env
+
+  payment_service:
+    build: .
+    command: python payment_service.py
+    ports:
+      - "5007:5007"
+    volumes:
+      - .:/app
+    env_file:
+      - .env

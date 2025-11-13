@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { jwtDecode } from 'jwt-decode';
 
+// --- API CONFIGURATION ---
 const API_URLS = {
     USER: 'http://127.0.0.1:5001',
 };
 
+// --- NEW: Check Frontend .env variable for CAPTCHA ---
+// We read the variable and default to 'true' if it's not set
+const isCaptchaEnabled = import.meta.env.VITE_CAPTCHA_ENABLED !== 'false';
+
+// --- AUTHENTICATION CONTEXT ---
 const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(() => {
@@ -38,6 +44,7 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => useContext(AuthContext);
 
 
+// --- CENTRALIZED API CALLER ---
 export const apiCall = async (url, options = {}, suppressErrors = false) => {
     options.credentials = 'include';
     const token = localStorage.getItem('accessToken');
@@ -80,6 +87,7 @@ export const apiCall = async (url, options = {}, suppressErrors = false) => {
     }
 };
 
+// --- LOGIN/REGISTER PAGE COMPONENT ---
 const AuthPage = () => {
     const { login } = useAuth();
     const [view, setView] = useState('login'); 
@@ -91,16 +99,22 @@ const AuthPage = () => {
     const [email, setEmail] = useState('');
     const [role, setRole] = useState('buyer');
     
+    // CAPTCHA state
     const [captcha, setCaptcha] = useState(null);
     const [captchaAnswer, setCaptchaAnswer] = useState('');
     
+    // OTP flow state
     const [otp, setOtp] = useState('');
     const [preAuthToken, setPreAuthToken] = useState(null);
 
+    // Feedback state
     const [error, setError] = useState(null);
     const [message, setMessage] = useState(null);
     
     const fetchCaptcha = useCallback(async () => {
+        // --- NEW: Only fetch CAPTCHA if it's enabled ---
+        if (!isCaptchaEnabled) return; 
+
         try {
             const result = await apiCall(`${API_URLS.USER}/captcha/new`);
             if (result && result.data) setCaptcha(result.data);
@@ -115,15 +129,27 @@ const AuthPage = () => {
     
     const handleLogin = async () => {
         setError(null); setMessage(null);
+        
+        // --- NEW: Conditionally build the request body ---
+        const loginPayload = {
+            username,
+            password
+        };
+
+        if (isCaptchaEnabled) {
+            // Check if captcha is enabled AND if the fields are actually filled
+            if (!captcha?.captcha_id || !captchaAnswer) {
+                setError("Please complete the CAPTCHA.");
+                return;
+            }
+            loginPayload.captcha_id = captcha.captcha_id;
+            loginPayload.captcha_answer = captchaAnswer;
+        }
+        
         try {
             const result = await apiCall(`${API_URLS.USER}/login`, { 
                 method: 'POST', 
-                body: JSON.stringify({ 
-                    username, 
-                    password,
-                    captcha_id: captcha?.captcha_id,
-                    captcha_answer: captchaAnswer
-                }) 
+                body: JSON.stringify(loginPayload) 
             });
 
             if (result.status === 206) {
@@ -135,8 +161,10 @@ const AuthPage = () => {
             }
         } catch (err) { 
             setError(err.message); 
-            fetchCaptcha(); 
-            setCaptchaAnswer(''); 
+            if (isCaptchaEnabled) {
+                fetchCaptcha(); 
+                setCaptchaAnswer(''); 
+            }
         }
     };
 
@@ -154,31 +182,42 @@ const AuthPage = () => {
     const handleRegisterStart = async () => {
         setError(null); setMessage(null);
 
+        // --- NEW VALIDATION LOGIC ---
+        // (Your existing validations)
         const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
         if (!usernameRegex.test(username)) {
             setError("Username must be 3-20 characters long and can only contain letters, numbers, and underscores.");
             return;
         }
-
         const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
         if (!passwordRegex.test(password)) {
             setError("Password must be at least 8 characters long, and include an uppercase letter, a lowercase letter, a number, and a special character.");
             return;
         }
-        
         if (password !== confirmPassword) { 
             setError("Passwords do not match."); 
             return; 
         }
 
+        // --- NEW: Conditionally build the request body ---
+        const registerPayload = {
+            username, password, email, role
+        };
+
+        if (isCaptchaEnabled) {
+            // Check if captcha is enabled AND if the fields are actually filled
+            if (!captcha?.captcha_id || !captchaAnswer) {
+                setError("Please complete the CAPTCHA.");
+                return;
+            }
+            registerPayload.captcha_id = captcha.captcha_id;
+            registerPayload.captcha_answer = captchaAnswer;
+        }
+
         try {
             const result = await apiCall(`${API_URLS.USER}/register/start`, {
                 method: 'POST', 
-                body: JSON.stringify({ 
-                    username, password, email, role,
-                    captcha_id: captcha?.captcha_id,
-                    captcha_answer: captchaAnswer
-                })
+                body: JSON.stringify(registerPayload)
             });
 
             if (result.status === 206) {
@@ -188,8 +227,10 @@ const AuthPage = () => {
             }
         } catch (err) { 
             setError(err.message);
-            fetchCaptcha();
-            setCaptchaAnswer('');
+            if (isCaptchaEnabled) {
+                fetchCaptcha();
+                setCaptchaAnswer('');
+            }
         }
     };
 
@@ -224,11 +265,12 @@ const AuthPage = () => {
                             </div>
                             <input type="password" placeholder="Confirm Password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full px-4 py-2 border rounded-md" required />
                             
-                            {captcha && (
+                            {/* --- NEW: Conditional Rendering --- */}
+                            {isCaptchaEnabled && captcha && (
                                 <div className="p-4 space-y-3 bg-gray-100 border rounded-md">
                                     <div className="flex items-center justify-center">
                                         <img src={captcha.image} alt="CAPTCHA" className="rounded" />
-                                        <button onClick={fetchCaptcha} className="ml-4 p-2 text-gray-500 hover:text-gray-800" title="Get a new CAPTCHA"><svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M20 4h-5v5M4 20h5v-5" /></svg></button>
+                                        <button type="button" onClick={fetchCaptcha} className="ml-4 p-2 text-gray-500 hover:text-gray-800" title="Get a new CAPTCHA"><svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M20 4h-5v5M4 20h5v-5" /></svg></button>
                                     </div>
                                     <input type="text" placeholder="Enter CAPTCHA" value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)} className="w-full px-4 py-2 text-center border rounded-md" />
                                 </div>
@@ -236,7 +278,7 @@ const AuthPage = () => {
                             <fieldset className="pt-2"><legend className="text-sm font-medium text-gray-700">I am a:</legend><div className="flex items-center mt-2 space-x-6"><label className="flex items-center"><input type="radio" name="role" value="buyer" checked={role === 'buyer'} onChange={() => setRole('buyer')} className="w-4 h-4 text-blue-600 border-gray-300" /><span className="ml-2 text-sm text-gray-700">Buyer</span></label><label className="flex items-center"><input type="radio" name="role" value="seller" checked={role === 'seller'} onChange={() => setRole('seller')} className="w-4 h-4 text-blue-600 border-gray-300" /><span className="ml-2 text-sm text-gray-700">Seller</span></label></div></fieldset>
                         </div>
                         <button onClick={handleRegisterStart} className="w-full px-4 py-2 mt-6 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700">Send Verification Code</button>
-                        <p className="mt-4 text-sm text-center text-gray-600">Already have an account?{' '}<button onClick={() => setView('login')} className="font-medium text-blue-600 hover:underline">Login here</button></p>
+                        <p className="mt-4 text-sm text-center text-gray-600">Already have an account?{' '}<button type="button" onClick={() => setView('login')} className="font-medium text-blue-600 hover:underline">Login here</button></p>
                     </div>
                 );
             case 'login':
@@ -247,18 +289,20 @@ const AuthPage = () => {
                         <div className="mt-6 space-y-4"> 
                             <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-2 border rounded-md" /> 
                             <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-md" /> 
-                            {captcha && (
+                            
+                            {/* --- NEW: Conditional Rendering --- */}
+                            {isCaptchaEnabled && captcha && (
                                 <div className="p-4 space-y-3 bg-gray-100 border rounded-md">
                                     <div className="flex items-center justify-center">
                                         <img src={captcha.image} alt="CAPTCHA" className="rounded" />
-                                        <button onClick={fetchCaptcha} className="ml-4 p-2 text-gray-500 hover:text-gray-800" title="Get a new CAPTCHA"><svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M20 4h-5v5M4 20h5v-5" /></svg></button>
+                                        <button type="button" onClick={fetchCaptcha} className="ml-4 p-2 text-gray-500 hover:text-gray-800" title="Get a new CAPTCHA"><svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5M20 4h-5v5M4 20h5v-5" /></svg></button>
                                     </div>
                                     <input type="text" placeholder="Enter CAPTCHA" value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)} className="w-full px-4 py-2 text-center border rounded-md" />
                                 </div>
                             )}
                         </div> 
                         <button onClick={handleLogin} className="w-full px-4 py-2 mt-6 font-semibold text-white bg-green-600 rounded-md hover:bg-green-700">Login</button> 
-                        <p className="mt-4 text-sm text-center text-gray-600">Don't have an account?{' '}<button onClick={() => setView('register')} className="font-medium text-blue-600 hover:underline">Register here</button></p> 
+                        <p className="mt-4 text-sm text-center text-gray-600">Don't have an account?{' '}<button type="button" onClick={() => setView('register')} className="font-medium text-blue-600 hover:underline">Register here</button></p> 
                     </div>
                 );
         }
